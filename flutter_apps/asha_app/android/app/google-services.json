@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "639797330848",
+    "project_id": "asha-c273a",
+    "storage_bucket": "asha-c273a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:639797330848:android:f28497e4d3d804809a9ac5",
+        "android_client_info": {
+          "package_name": "com.example.asha_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_h-fYqn4OQbsGBtshqo-ss0gUZKxJXb8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

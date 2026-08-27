@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+.pub-cache/
+.idea/
+
+# Android
+.gradle/
+local.properties
+
+# macOS
+.DS_Store
+
+# Python virtual environment
+venv/
+.venv/
+
+# Generated Flutter files
+**/android/.gradle/
+**/ios/Pods/

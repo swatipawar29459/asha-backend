@@ -1,0 +1,6 @@
+Model,MAE,RMSE,Accuracy(+/-2days)%
+Random Forest (baseline),7.14,8.49,14.47
+XGBoost (baseline),7.18,8.63,13.84
+Decision Tree (baseline),6.52,7.71,15.72
+SVM (baseline),6.4,7.38,15.09
+LSTM (baseline),6.36,7.29,11.95
