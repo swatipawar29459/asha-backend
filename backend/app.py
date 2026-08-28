@@ -199,10 +199,7 @@ def home():
 # PREDICTION
 # ============================================================
 
-@app.route(
-    "/predict/<int:user_id>",
-    methods=["POST"]
-)
+@app.route("/predict/<user_id>", methods=["POST"])
 def predict(user_id):
 
     try:
@@ -580,10 +577,7 @@ def predict(user_id):
 # LOG SYMPTOMS
 # ============================================================
 
-@app.route(
-    "/log/<int:user_id>",
-    methods=["POST"]
-)
+@app.route("/log/<user_id>", methods=["POST"])
 def log_symptoms(user_id):
 
     data = request.get_json()
@@ -769,9 +763,7 @@ def chat():
 # NOTIFICATIONS
 # ============================================================
 
-@app.route(
-    "/notifications/<int:user_id>"
-)
+@app.route("/notifications/<user_id>")
 def notifications(user_id):
 
     return jsonify({
