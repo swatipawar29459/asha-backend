@@ -10,7 +10,8 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() =>
+      _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
@@ -19,11 +20,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool loading = true;
   String? error;
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-
-  // ==================================================
-  // INIT
-  // ==================================================
+  final FirebaseAuth _auth =
+      FirebaseAuth.instance;
 
   @override
   void initState() {
@@ -32,36 +30,50 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ==================================================
-  // LOAD USER + PREDICTION
+  // LOAD
   // ==================================================
 
   Future<void> _load() async {
     try {
-      final user = _auth.currentUser;
+      final user =
+          _auth.currentUser;
 
-      // No logged-in user
       if (user == null) {
         if (!mounted) return;
 
         setState(() {
-          error = 'Please sign in again.';
+          error =
+              'Please sign in again.';
           loading = false;
         });
 
         return;
       }
 
-      // Load saved health profile
       await HealthProfileStore.load();
 
-      print('================================');
-      print('Firebase UID: ${user.uid}');
-      print('Firebase Name: ${user.displayName}');
-      print('Firebase Email: ${user.email}');
-      print('================================');
+      print(
+        '================================',
+      );
+      print(
+        'Firebase UID: ${user.uid}',
+      );
+      print(
+        'Firebase Name: ${user.displayName}',
+      );
+      print(
+        'Firebase Email: ${user.email}',
+      );
+      print(
+        'Last Period: '
+        '${HealthProfileStore.lastPeriodDate}',
+      );
+      print(
+        '================================',
+      );
 
-      // Send Firebase UID to Flask
-      final p = await ApiService.fetchPrediction(
+      final p =
+          await ApiService.fetchPrediction(
         userId: user.uid,
       );
 
@@ -74,43 +86,52 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      print('Home error: $e');
+      print(
+        'Home error: $e',
+      );
 
       setState(() {
-        error = 'Could not load your data.';
+        error =
+            'Could not load your data.';
         loading = false;
       });
     }
   }
 
   // ==================================================
-  // DYNAMIC GREETING
+  // GREETING
   // ==================================================
 
   String _getGreeting() {
-    final hour = DateTime.now().hour;
+    final hour =
+        DateTime.now().hour;
 
     if (hour >= 5 && hour < 12) {
       return 'Good morning';
-    } else if (hour >= 12 && hour < 17) {
+    } else if (hour >= 12 &&
+        hour < 17) {
       return 'Good afternoon';
-    } else if (hour >= 17 && hour < 21) {
+    } else if (hour >= 17 &&
+        hour < 21) {
       return 'Good evening';
-    } else {
-      return 'Good night';
     }
+
+    return 'Good night';
   }
 
   // ==================================================
-  // GET FIREBASE USER NAME
+  // USER NAME
   // ==================================================
 
   String _getUserName() {
-    final user = FirebaseAuth.instance.currentUser;
+    final user =
+        FirebaseAuth.instance.currentUser;
 
-    final name = user?.displayName?.trim();
+    final name =
+        user?.displayName?.trim();
 
-    if (name != null && name.isNotEmpty) {
+    if (name != null &&
+        name.isNotEmpty) {
       return name;
     }
 
@@ -118,11 +139,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ==================================================
-  // GET FIREBASE UID
+  // USER ID
   // ==================================================
 
   String _getUserId() {
-    final user = FirebaseAuth.instance.currentUser;
+    final user =
+        FirebaseAuth.instance.currentUser;
 
     return user?.uid ?? '';
   }
@@ -135,17 +157,20 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     if (loading) {
       return const Center(
-        child: CircularProgressIndicator(),
+        child:
+            CircularProgressIndicator(),
       );
     }
 
     if (error != null) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding:
+              const EdgeInsets.all(24),
           child: Text(
             error!,
-            textAlign: TextAlign.center,
+            textAlign:
+                TextAlign.center,
           ),
         ),
       );
@@ -153,53 +178,63 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (prediction == null) {
       return const Center(
-        child: Text('No prediction available.'),
+        child: Text(
+          'No prediction available.',
+        ),
       );
     }
 
     final p = prediction!;
 
-    final userName = _getUserName();
-    final userId = _getUserId();
+    final userName =
+        _getUserName();
+
+    final userId =
+        _getUserId();
 
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding:
+            const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
-
-            // ==================================================
             // HEADER
-            // ==================================================
 
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment:
+                  MainAxisAlignment
+                      .spaceBetween,
               children: [
-
                 Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      CrossAxisAlignment
+                          .start,
                   children: [
-
                     Text(
                       _getGreeting(),
-                      style: const TextStyle(
-                        color: AshaColors.slate,
+                      style:
+                          const TextStyle(
+                        color:
+                            AshaColors.slate,
                         fontSize: 14,
                       ),
                     ),
-
-                    const SizedBox(height: 2),
-
+                    const SizedBox(
+                      height: 2,
+                    ),
                     Text(
                       '$userName 🌼',
-                      style: Theme.of(context)
-                          .textTheme
-                          .displayLarge,
+                      style:
+                          Theme.of(
+                        context,
+                      )
+                              .textTheme
+                              .displayLarge,
                     ),
                   ],
                 ),
-
                 GestureDetector(
                   onTap: () {
                     Navigator.pushNamed(
@@ -207,43 +242,48 @@ class _HomeScreenState extends State<HomeScreen> {
                       '/notifications',
                     );
                   },
-                  child: const CircleAvatar(
-                    backgroundColor: Colors.white,
+                  child:
+                      const CircleAvatar(
+                    backgroundColor:
+                        Colors.white,
                     child: Icon(
-                      Icons.notifications_rounded,
+                      Icons
+                          .notifications_rounded,
                     ),
                   ),
                 ),
               ],
             ),
 
-            const SizedBox(height: 4),
+            const SizedBox(
+              height: 4,
+            ),
 
-            // Optional small Firebase UID display for testing.
-            // REMOVE this later if you don't want it visible.
+            // TEMPORARY UID
+
             Text(
               'ID: $userId',
-              style: const TextStyle(
+              style:
+                  const TextStyle(
                 fontSize: 9,
-                color: AshaColors.slate,
+                color:
+                    AshaColors.slate,
               ),
             ),
 
-            const SizedBox(height: 16),
-
-            // ==================================================
-            // ASHA MASCOT
-            // ==================================================
+            const SizedBox(
+              height: 16,
+            ),
 
             const Center(
               child: AshaMascot(),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(
+              height: 20,
+            ),
 
-            // ==================================================
             // CYCLE RING
-            // ==================================================
 
             Center(
               child: GestureDetector(
@@ -257,57 +297,84 @@ class _HomeScreenState extends State<HomeScreen> {
                   width: 210,
                   height: 210,
                   child: Stack(
-                    alignment: Alignment.center,
+                    alignment:
+                        Alignment.center,
                     children: [
-
                       CustomPaint(
-                        size: const Size(
+                        size:
+                            const Size(
                           210,
                           210,
                         ),
-                        painter: _RingPainter(
-                          progress: p.cycleProgress,
+                        painter:
+                            _RingPainter(
+                          progress:
+                              p.cycleProgress,
                         ),
                       ),
 
                       Column(
-                        mainAxisSize: MainAxisSize.min,
+                        mainAxisSize:
+                            MainAxisSize
+                                .min,
                         children: [
-
                           Text(
                             'Day ${p.currentDay}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .displayLarge,
+                            style:
+                                Theme.of(
+                              context,
+                            )
+                                    .textTheme
+                                    .displayLarge,
                           ),
 
                           Text(
                             p.phaseLabel,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AshaColors.slate,
+                            style:
+                                const TextStyle(
+                              fontSize:
+                                  12,
+                              color:
+                                  AshaColors.slate,
                             ),
                           ),
 
-                          const SizedBox(height: 6),
+                          const SizedBox(
+                            height: 6,
+                          ),
 
                           Container(
                             padding:
-                                const EdgeInsets.symmetric(
-                              horizontal: 12,
+                                const EdgeInsets
+                                    .symmetric(
+                              horizontal:
+                                  12,
                               vertical: 5,
                             ),
-                            decoration: BoxDecoration(
-                              color: AshaColors.coral,
+                            decoration:
+                                BoxDecoration(
+                              color:
+                                  AshaColors
+                                      .coral,
                               borderRadius:
-                                  BorderRadius.circular(20),
+                                  BorderRadius
+                                      .circular(
+                                20,
+                              ),
                             ),
-                            child: Text(
+                            child:
+                                Text(
                               'AI confidence ${p.confidence}%',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
+                              style:
+                                  const TextStyle(
+                                color:
+                                    Colors
+                                        .white,
+                                fontSize:
+                                    10,
+                                fontWeight:
+                                    FontWeight
+                                        .bold,
                               ),
                             ),
                           ),
@@ -319,18 +386,18 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(
+              height: 20,
+            ),
 
-            // ==================================================
             // NEXT PERIOD + FERTILE WINDOW
-            // ==================================================
 
             Row(
               children: [
-
                 Expanded(
                   child: AshaCard(
-                    tint: AshaColors.mint,
+                    tint:
+                        AshaColors.mint,
                     child: _stat(
                       '🩸 NEXT PERIOD',
                       p.nextPeriodLabel,
@@ -338,11 +405,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
 
-                const SizedBox(width: 12),
+                const SizedBox(
+                  width: 12,
+                ),
 
                 Expanded(
                   child: AshaCard(
-                    tint: AshaColors.sky,
+                    tint:
+                        AshaColors.sky,
                     child: _stat(
                       '🌱 FERTILE WINDOW',
                       p.fertileWindowLabel,
@@ -352,11 +422,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
 
-            const SizedBox(height: 4),
+            const SizedBox(
+              height: 4,
+            ),
 
-            // ==================================================
             // DISCHARGE
-            // ==================================================
 
             GestureDetector(
               onTap: () {
@@ -366,20 +436,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
               child: AshaCard(
-                tint: AshaColors.sun,
-                child: const Text(
+                tint:
+                    AshaColors.sun,
+                child:
+                    const Text(
                   '💧 Log discharge',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
+                  style:
+                      TextStyle(
+                    fontWeight:
+                        FontWeight.bold,
                     fontSize: 12,
                   ),
                 ),
               ),
             ),
 
-            // ==================================================
             // DOCTOR
-            // ==================================================
 
             GestureDetector(
               onTap: () {
@@ -389,64 +461,83 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
               child: AshaCard(
-                child: const Text(
+                child:
+                    const Text(
                   '🩺 Find a doctor nearby',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
+                  style:
+                      TextStyle(
+                    fontWeight:
+                        FontWeight.bold,
                     fontSize: 13,
                   ),
                 ),
               ),
             ),
 
-            // ==================================================
-            // PCOS WELLNESS SIGNAL
-            // ==================================================
+            // PCOS
 
             if (p.pcosRisk)
               AshaCard(
                 child: Column(
                   crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      CrossAxisAlignment
+                          .start,
                   children: [
-
                     const Text(
                       '⚠ Wellness signal',
-                      style: TextStyle(
-                        color: AshaColors.alert,
-                        fontWeight: FontWeight.bold,
+                      style:
+                          TextStyle(
+                        color:
+                            AshaColors
+                                .alert,
+                        fontWeight:
+                            FontWeight
+                                .bold,
                         fontSize: 12,
                       ),
                     ),
 
-                    const SizedBox(height: 4),
+                    const SizedBox(
+                      height: 4,
+                    ),
 
                     const Text(
                       'Your patterns shifted from your baseline. Worth a conversation with a doctor.',
-                      style: TextStyle(
+                      style:
+                          TextStyle(
                         fontSize: 12,
                       ),
                     ),
 
-                    const SizedBox(height: 8),
+                    const SizedBox(
+                      height: 8,
+                    ),
 
                     ElevatedButton(
                       style:
-                          ElevatedButton.styleFrom(
+                          ElevatedButton
+                              .styleFrom(
                         backgroundColor:
-                            AshaColors.coral,
+                            AshaColors
+                                .coral,
                       ),
                       onPressed: () {
-                        Navigator.pushNamed(
+                        Navigator
+                            .pushNamed(
                           context,
                           '/find-doctor',
                         );
                       },
-                      child: const Text(
+                      child:
+                          const Text(
                         'Find a doctor',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
+                        style:
+                            TextStyle(
+                          color:
+                              Colors
+                                  .white,
+                          fontSize:
+                              12,
                         ),
                       ),
                     ),
@@ -460,7 +551,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ==================================================
-  // STAT CARD
+  // STAT
   // ==================================================
 
   Widget _stat(
@@ -471,21 +562,26 @@ class _HomeScreenState extends State<HomeScreen> {
       crossAxisAlignment:
           CrossAxisAlignment.start,
       children: [
-
         Text(
           label,
-          style: const TextStyle(
+          style:
+              const TextStyle(
             fontSize: 11,
-            fontWeight: FontWeight.bold,
+            fontWeight:
+                FontWeight.bold,
           ),
         ),
 
-        const SizedBox(height: 4),
+        const SizedBox(
+          height: 4,
+        ),
 
         Text(
           value,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
+          style:
+              const TextStyle(
+            fontWeight:
+                FontWeight.bold,
             fontSize: 15,
           ),
         ),
@@ -498,7 +594,8 @@ class _HomeScreenState extends State<HomeScreen> {
 // CYCLE RING
 // ============================================================
 
-class _RingPainter extends CustomPainter {
+class _RingPainter
+    extends CustomPainter {
   final double progress;
 
   _RingPainter({
@@ -510,7 +607,8 @@ class _RingPainter extends CustomPainter {
     Canvas canvas,
     Size size,
   ) {
-    final center = size.center(
+    final center =
+        size.center(
       Offset.zero,
     );
 
@@ -518,10 +616,13 @@ class _RingPainter extends CustomPainter {
         size.width / 2 - 10;
 
     final bg = Paint()
-      ..color = AshaColors.peach
+      ..color =
+          AshaColors.peach
       ..strokeWidth = 14
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+      ..style =
+          PaintingStyle.stroke
+      ..strokeCap =
+          StrokeCap.round;
 
     canvas.drawCircle(
       center,
@@ -530,7 +631,8 @@ class _RingPainter extends CustomPainter {
     );
 
     final fg = Paint()
-      ..shader = const LinearGradient(
+      ..shader =
+          const LinearGradient(
         colors: [
           AshaColors.coral,
           AshaColors.coralDark,
@@ -542,8 +644,10 @@ class _RingPainter extends CustomPainter {
         ),
       )
       ..strokeWidth = 14
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+      ..style =
+          PaintingStyle.stroke
+      ..strokeCap =
+          StrokeCap.round;
 
     canvas.drawArc(
       Rect.fromCircle(
@@ -561,6 +665,7 @@ class _RingPainter extends CustomPainter {
   bool shouldRepaint(
     covariant _RingPainter old,
   ) {
-    return old.progress != progress;
+    return old.progress !=
+        progress;
   }
 }

@@ -7,7 +7,6 @@ import '../models/doctor.dart';
 import 'health_profile_store.dart';
 
 class AshaNotification {
-
   final String id;
   final String type;
   final String title;
@@ -27,7 +26,6 @@ class AshaNotification {
   factory AshaNotification.fromJson(
     Map<String, dynamic> json,
   ) {
-
     return AshaNotification(
       id: json['id']?.toString() ?? '',
       type: json['type']?.toString() ?? '',
@@ -39,12 +37,9 @@ class AshaNotification {
   }
 }
 
-
 class ApiService {
-
   static const String baseUrl =
       'https://asha-backend-1.onrender.com';
-
 
   // ==================================================
   // PREDICTION
@@ -53,7 +48,6 @@ class ApiService {
   static Future<Prediction> fetchPrediction({
     required String userId,
   }) async {
-
     final profile =
         HealthProfileStore.toJson();
 
@@ -61,16 +55,12 @@ class ApiService {
     print('Sending profile: $profile');
 
     final response = await http.post(
-
       Uri.parse(
         '$baseUrl/predict/$userId',
       ),
-
       headers: {
-        'Content-Type':
-            'application/json',
+        'Content-Type': 'application/json',
       },
-
       body: jsonEncode(profile),
     );
 
@@ -81,7 +71,6 @@ class ApiService {
     );
 
     if (response.statusCode != 200) {
-
       throw Exception(
         'Prediction failed: ${response.body}',
       );
@@ -92,7 +81,6 @@ class ApiService {
     );
   }
 
-
   // ==================================================
   // LOG SYMPTOMS
   // ==================================================
@@ -101,29 +89,22 @@ class ApiService {
     String userId,
     Map<String, dynamic> log,
   ) async {
-
     final response = await http.post(
-
       Uri.parse(
         '$baseUrl/log/$userId',
       ),
-
       headers: {
-        'Content-Type':
-            'application/json',
+        'Content-Type': 'application/json',
       },
-
       body: jsonEncode(log),
     );
 
     if (response.statusCode != 200) {
-
       throw Exception(
         'Could not save symptoms',
       );
     }
   }
-
 
   // ==================================================
   // AI CHAT
@@ -134,18 +115,13 @@ class ApiService {
     List<Map<String, String>> history =
         const [],
   }) async {
-
     final response = await http.post(
-
       Uri.parse(
         '$baseUrl/chat',
       ),
-
       headers: {
-        'Content-Type':
-            'application/json',
+        'Content-Type': 'application/json',
       },
-
       body: jsonEncode({
         'message': message,
         'history': history,
@@ -153,7 +129,6 @@ class ApiService {
     );
 
     if (response.statusCode != 200) {
-
       throw Exception(
         'Could not reach Asha AI',
       );
@@ -166,7 +141,6 @@ class ApiService {
         'Sorry, I could not respond.';
   }
 
-
   // ==================================================
   // NOTIFICATIONS
   // ==================================================
@@ -175,16 +149,26 @@ class ApiService {
       fetchNotifications({
     required String userId,
   }) async {
+    final profile =
+        HealthProfileStore.toJson();
 
-    final response = await http.get(
-
+    final response = await http.post(
       Uri.parse(
         '$baseUrl/notifications/$userId',
       ),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(profile),
+    );
+
+    print(
+      'Notifications: '
+      '${response.statusCode} '
+      '${response.body}',
     );
 
     if (response.statusCode != 200) {
-
       throw Exception(
         'Could not load notifications',
       );
@@ -206,7 +190,6 @@ class ApiService {
         .toList();
   }
 
-
   // ==================================================
   // FIND DOCTORS
   // ==================================================
@@ -215,17 +198,20 @@ class ApiService {
     double lat,
     double lng,
   ) async {
-
     final response = await http.get(
-
       Uri.parse(
         '$baseUrl/doctors'
         '?lat=$lat&lng=$lng',
       ),
     );
 
-    if (response.statusCode != 200) {
+    print(
+      'Doctors: '
+      '${response.statusCode} '
+      '${response.body}',
+    );
 
+    if (response.statusCode != 200) {
       throw Exception(
         'Could not find nearby doctors',
       );
@@ -247,7 +233,6 @@ class ApiService {
         .toList();
   }
 
-
   // ==================================================
   // GEOCODE
   // ==================================================
@@ -256,9 +241,7 @@ class ApiService {
       geocodeAddress(
     String address,
   ) async {
-
     final response = await http.get(
-
       Uri.parse(
         '$baseUrl/geocode'
         '?address='
@@ -266,8 +249,13 @@ class ApiService {
       ),
     );
 
-    if (response.statusCode != 200) {
+    print(
+      'Geocode: '
+      '${response.statusCode} '
+      '${response.body}',
+    );
 
+    if (response.statusCode != 200) {
       throw Exception(
         'Location not found',
       );

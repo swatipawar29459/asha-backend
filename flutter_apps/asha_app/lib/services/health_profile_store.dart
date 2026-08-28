@@ -42,9 +42,15 @@ class HealthProfileStore {
   // ==================================================
 
   static DateTime? get predictedNextPeriod {
-    if (lastPeriodDate == null) return null;
+    if (lastPeriodDate == null) {
+      return null;
+    }
 
-    return lastPeriodDate!.add(
+    return DateTime(
+      lastPeriodDate!.year,
+      lastPeriodDate!.month,
+      lastPeriodDate!.day,
+    ).add(
       Duration(days: cycleLength),
     );
   }
@@ -52,7 +58,9 @@ class HealthProfileStore {
   static DateTime? get ovulationDate {
     final next = predictedNextPeriod;
 
-    if (next == null) return null;
+    if (next == null) {
+      return null;
+    }
 
     return next.subtract(
       const Duration(days: 14),
@@ -62,7 +70,9 @@ class HealthProfileStore {
   static DateTimeRange? get fertileWindow {
     final ov = ovulationDate;
 
-    if (ov == null) return null;
+    if (ov == null) {
+      return null;
+    }
 
     return DateTimeRange(
       start: ov.subtract(
@@ -72,6 +82,13 @@ class HealthProfileStore {
     );
   }
 
+  static String _formatDate(DateTime date) {
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+
+    return '$day/$month/${date.year}';
+  }
+
   static String get fertileWindowLabel {
     final w = fertileWindow;
 
@@ -79,8 +96,7 @@ class HealthProfileStore {
       return 'Add your last period date';
     }
 
-    return '${w.start.day}/${w.start.month} – '
-        '${w.end.day}/${w.end.month}';
+    return '${_formatDate(w.start)} – ${_formatDate(w.end)}';
   }
 
   static String get nextPeriodDisplay {
@@ -90,7 +106,36 @@ class HealthProfileStore {
       return 'Add your last period date';
     }
 
-    return '${d.day}/${d.month}/${d.year}';
+    return _formatDate(d);
+  }
+
+  // ==================================================
+  // CURRENT CYCLE DAY
+  // ==================================================
+
+  static int get currentCycleDay {
+    if (lastPeriodDate == null) {
+      return 1;
+    }
+
+    final today = DateTime.now();
+
+    final start = DateTime(
+      lastPeriodDate!.year,
+      lastPeriodDate!.month,
+      lastPeriodDate!.day,
+    );
+
+    final current = DateTime(
+      today.year,
+      today.month,
+      today.day,
+    );
+
+    final difference =
+        current.difference(start).inDays + 1;
+
+    return difference < 1 ? 1 : difference;
   }
 
   // ==================================================
@@ -98,11 +143,14 @@ class HealthProfileStore {
   // ==================================================
 
   static Future<void> save() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs =
+        await SharedPreferences.getInstance();
 
-    // USER
     if (userId != null) {
-      await prefs.setInt('userId', userId!);
+      await prefs.setInt(
+        'userId',
+        userId!,
+      );
     }
 
     await prefs.setString(
@@ -110,7 +158,6 @@ class HealthProfileStore {
       userName,
     );
 
-    // HEALTH PROFILE
     await prefs.setInt(
       'cycleLength',
       cycleLength,
@@ -189,14 +236,15 @@ class HealthProfileStore {
   // ==================================================
 
   static Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs =
+        await SharedPreferences.getInstance();
 
-    // USER
-    userId = prefs.getInt('userId');
+    userId =
+        prefs.getInt('userId');
 
-    userName = prefs.getString('userName') ?? '';
+    userName =
+        prefs.getString('userName') ?? '';
 
-    // HEALTH PROFILE
     cycleLength =
         prefs.getInt('cycleLength') ?? 28;
 
@@ -254,32 +302,19 @@ class HealthProfileStore {
   static Map<String, dynamic> toJson() {
     return {
       'user_id': userId,
-
       'user_name': userName,
-
       'age': age,
-
       'cycle_length': cycleLength,
-
       'period_length': periodLength,
-
       'bmi': bmi,
-
       'stress_level': stress,
-
       'exercise_frequency': exerciseFrequency,
-
       'sleep_hours': sleepHours,
-
       'diet': diet,
-
       'pcos': pcos,
-
       'symptoms': symptoms.toList(),
-
       'last_period_date':
           lastPeriodDate?.toIso8601String(),
     };
   }
 }
-
