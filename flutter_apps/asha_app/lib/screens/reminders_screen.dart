@@ -1,111 +1,755 @@
 import 'package:flutter/material.dart';
+
 import '../theme/asha_theme.dart';
-import '../models/reminder.dart';
 import '../services/notification_service.dart';
 
+
+// ============================================================
+// REMINDERS SCREEN
+// ============================================================
+
 class RemindersScreen extends StatefulWidget {
- const RemindersScreen({super.key});
- @override
- State<RemindersScreen> createState() => _RemindersScreenState();
+  const RemindersScreen({
+    super.key,
+  });
+
+  @override
+  State<RemindersScreen> createState() =>
+      _RemindersScreenState();
 }
 
-class _RemindersScreenState extends State<RemindersScreen> {
- final List<Reminder> reminders = [
- Reminder(id: 1, title: 'Sleep reminder', time: const TimeOfDay(hour: 22, minute: 30)),
- Reminder(id: 2, title: 'Drink water', time: const TimeOfDay(hour: 12, minute: 0)),
- Reminder(id: 3, title: 'Log your symptoms', time: const TimeOfDay(hour: 20, minute: 0)),
- ];
 
- Future<void> _toggle(Reminder r, bool value) async {
- setState(() => r.enabled = value);
- if (value) {
- await NotificationService.scheduleDailyReminder(
- id: r.id, title: 'Asha', body: r.title, hour: r.time.hour, minute: r.time.minute,
- );
- } else {
- await NotificationService.cancel(r.id);
- }
- }
+class _RemindersScreenState
+    extends State<RemindersScreen> {
 
- Future<void> _pickTime(Reminder r) async {
- final picked = await showTimePicker(context: context, initialTime: r.time);
- if (picked != null) {
- setState(() {
- final index = reminders.indexOf(r);
- reminders[index] = Reminder(id: r.id, title: r.title, time: picked, enabled: r.enabled);
- });
- if (r.enabled) {
- await NotificationService.scheduleDailyReminder(
- id: r.id, title: 'Asha', body: r.title, hour: picked.hour, minute: picked.minute,
- );
- }
- }
- }
+  bool periodReminder = true;
 
- Future<void> _addReminder() async {
- final controller = TextEditingController();
- final title = await showDialog<String>(
- context: context,
- builder: (context) => AlertDialog(
- title: const Text('New reminder'),
- content: TextField(controller: controller, decoration: const InputDecoration(hintText: 'e.g. Take medicine')),
- actions: [
- TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
- TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Add')),
- ],
- ),
- );
- if (title == null || title.trim().isEmpty) return;
- final newId = DateTime.now().millisecondsSinceEpoch % 100000;
- final newReminder = Reminder(id: newId, title: title.trim(), time: const TimeOfDay(hour: 9, minute: 0));
- setState(() => reminders.add(newReminder));
- await NotificationService.scheduleDailyReminder(
- id: newId, title: 'Asha', body: newReminder.title, hour: 9, minute: 0,
- );
- }
+  bool symptomReminder = true;
 
- @override
- Widget build(BuildContext context) {
- return Scaffold(
- appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, title: const Text('Reminders')),
- floatingActionButton: FloatingActionButton(
- backgroundColor: AshaColors.coral,
- onPressed: _addReminder,
- child: const Icon(Icons.add, color: Colors.white),
- ),
- body: SafeArea(
- child: ListView.builder(
- padding: const EdgeInsets.all(20),
- itemCount: reminders.length,
- itemBuilder: (_, i) {
- final r = reminders[i];
- return AshaCard(
- child: Row(
- children: [
- Expanded(
- child: GestureDetector(
- onTap: () => _pickTime(r),
- child: Column(
- crossAxisAlignment: CrossAxisAlignment.start,
- children: [
- Text(r.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
- const SizedBox(height: 4),
- Text(r.time.format(context), style: const TextStyle(fontSize: 12, color: AshaColors.slate)),
- ],
- ),
- ),
- ),
- Switch(
- value: r.enabled,
- activeColor: AshaColors.coral,
- onChanged: (v) => _toggle(r, v),
- ),
- ],
- ),
- );
- },
- ),
- ),
- );
- }
+  bool hydrationReminder = false;
+
+  TimeOfDay periodTime =
+      const TimeOfDay(
+    hour: 9,
+    minute: 0,
+  );
+
+  TimeOfDay symptomTime =
+      const TimeOfDay(
+    hour: 20,
+    minute: 0,
+  );
+
+  TimeOfDay hydrationTime =
+      const TimeOfDay(
+    hour: 14,
+    minute: 0,
+  );
+
+
+  // ==========================================================
+  // PICK TIME
+  // ==========================================================
+
+  Future<void> _pickTime(
+    String type,
+  ) async {
+
+    TimeOfDay initialTime;
+
+    if (type == 'period') {
+
+      initialTime =
+          periodTime;
+
+    } else if (type == 'symptom') {
+
+      initialTime =
+          symptomTime;
+
+    } else {
+
+      initialTime =
+          hydrationTime;
+    }
+
+
+    final picked =
+        await showTimePicker(
+
+      context: context,
+
+      initialTime:
+          initialTime,
+    );
+
+
+    if (picked == null) {
+      return;
+    }
+
+
+    setState(() {
+
+      if (type == 'period') {
+
+        periodTime =
+            picked;
+
+      } else if (type == 'symptom') {
+
+        symptomTime =
+            picked;
+
+      } else {
+
+        hydrationTime =
+            picked;
+      }
+    });
+  }
+
+
+  // ==========================================================
+  // FORMAT TIME
+  // ==========================================================
+
+  String _formatTime(
+    TimeOfDay time,
+  ) {
+
+    final hour =
+        time.hourOfPeriod == 0
+            ? 12
+            : time.hourOfPeriod;
+
+    final minute =
+        time.minute
+            .toString()
+            .padLeft(
+              2,
+              '0',
+            );
+
+    final period =
+        time.period ==
+                DayPeriod.am
+            ? 'AM'
+            : 'PM';
+
+    return '$hour:$minute $period';
+  }
+
+
+  // ==========================================================
+  // SAVE REMINDERS
+  // ==========================================================
+
+  Future<void> _saveReminders() async {
+
+    try {
+
+      // ------------------------------------------------------
+      // PERIOD REMINDER
+      // ------------------------------------------------------
+
+      if (periodReminder) {
+
+        await NotificationService
+            .scheduleReminder(
+          id: 100,
+          title:
+              'Asha reminder 🌼',
+          body:
+              'Your period may be approaching. Check your cycle.',
+          hour:
+              periodTime.hour,
+          minute:
+              periodTime.minute,
+        );
+
+      } else {
+
+        await NotificationService
+            .cancelReminder(
+          100,
+        );
+      }
+
+
+      // ------------------------------------------------------
+      // SYMPTOM REMINDER
+      // ------------------------------------------------------
+
+      if (symptomReminder) {
+
+        await NotificationService
+            .scheduleReminder(
+          id: 101,
+          title:
+              'How are you feeling today?',
+          body:
+              'Take a moment to log your symptoms in Asha.',
+          hour:
+              symptomTime.hour,
+          minute:
+              symptomTime.minute,
+        );
+
+      } else {
+
+        await NotificationService
+            .cancelReminder(
+          101,
+        );
+      }
+
+
+      // ------------------------------------------------------
+      // HYDRATION REMINDER
+      // ------------------------------------------------------
+
+      if (hydrationReminder) {
+
+        await NotificationService
+            .scheduleReminder(
+          id: 102,
+          title:
+              'Hydration reminder 💧',
+          body:
+              'Take a moment to drink some water.',
+          hour:
+              hydrationTime.hour,
+          minute:
+              hydrationTime.minute,
+        );
+
+      } else {
+
+        await NotificationService
+            .cancelReminder(
+          102,
+        );
+      }
+
+
+      if (!mounted) return;
+
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+
+        const SnackBar(
+          content: Text(
+            'Reminders updated successfully.',
+          ),
+        ),
+      );
+
+    } catch (e) {
+
+      if (!mounted) return;
+
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+
+        SnackBar(
+          content: Text(
+            'Could not update reminders: $e',
+          ),
+        ),
+      );
+    }
+  }
+
+
+  // ==========================================================
+  // BUILD
+  // ==========================================================
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+
+    return Scaffold(
+
+      appBar: AppBar(
+
+        backgroundColor:
+            Colors.transparent,
+
+        elevation: 0,
+
+        title: const Text(
+          'Reminders',
+        ),
+      ),
+
+
+      body: SafeArea(
+
+        child: SingleChildScrollView(
+
+          padding:
+              const EdgeInsets.all(20),
+
+          child: Column(
+
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+
+            children: [
+
+              // =================================================
+              // INTRO
+              // =================================================
+
+              Text(
+
+                'Gentle reminders',
+
+                style:
+                    Theme.of(context)
+                        .textTheme
+                        .titleLarge,
+              ),
+
+              const SizedBox(
+                height: 6,
+              ),
+
+              const Text(
+
+                'Choose when Asha should remind you.',
+
+                style: TextStyle(
+                  color:
+                      AshaColors.slate,
+                  fontSize: 13,
+                ),
+              ),
+
+
+              const SizedBox(
+                height: 20,
+              ),
+
+
+              // =================================================
+              // PERIOD REMINDER
+              // =================================================
+
+              _reminderCard(
+
+                icon:
+                    Icons.calendar_month_rounded,
+
+                title:
+                    'Period reminder',
+
+                subtitle:
+                    'Get a gentle reminder to check your cycle.',
+
+                enabled:
+                    periodReminder,
+
+                time:
+                    periodTime,
+
+                onToggle: (value) {
+
+                  setState(() {
+                    periodReminder =
+                        value;
+                  });
+                },
+
+                onTimeTap: () {
+
+                  _pickTime(
+                    'period',
+                  );
+                },
+              ),
+
+
+              const SizedBox(
+                height: 12,
+              ),
+
+
+              // =================================================
+              // SYMPTOM REMINDER
+              // =================================================
+
+              _reminderCard(
+
+                icon:
+                    Icons.favorite_rounded,
+
+                title:
+                    'Daily symptom check',
+
+                subtitle:
+                    'Remember to log how you are feeling.',
+
+                enabled:
+                    symptomReminder,
+
+                time:
+                    symptomTime,
+
+                onToggle: (value) {
+
+                  setState(() {
+                    symptomReminder =
+                        value;
+                  });
+                },
+
+                onTimeTap: () {
+
+                  _pickTime(
+                    'symptom',
+                  );
+                },
+              ),
+
+
+              const SizedBox(
+                height: 12,
+              ),
+
+
+              // =================================================
+              // HYDRATION REMINDER
+              // =================================================
+
+              _reminderCard(
+
+                icon:
+                    Icons.water_drop_rounded,
+
+                title:
+                    'Hydration reminder',
+
+                subtitle:
+                    'Get a reminder to stay hydrated.',
+
+                enabled:
+                    hydrationReminder,
+
+                time:
+                    hydrationTime,
+
+                onToggle: (value) {
+
+                  setState(() {
+                    hydrationReminder =
+                        value;
+                  });
+                },
+
+                onTimeTap: () {
+
+                  _pickTime(
+                    'hydration',
+                  );
+                },
+              ),
+
+
+              const SizedBox(
+                height: 24,
+              ),
+
+
+              // =================================================
+              // SAVE
+              // =================================================
+
+              SizedBox(
+
+                width:
+                    double.infinity,
+
+                child:
+                    ElevatedButton(
+
+                  style:
+                      ElevatedButton.styleFrom(
+
+                    backgroundColor:
+                        AshaColors.coral,
+
+                    padding:
+                        const EdgeInsets.symmetric(
+                      vertical: 16,
+                    ),
+
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(
+                        14,
+                      ),
+                    ),
+                  ),
+
+                  onPressed:
+                      _saveReminders,
+
+                  child:
+                      const Text(
+
+                    'Save reminders',
+
+                    style:
+                        TextStyle(
+                      color:
+                          Colors.white,
+                      fontWeight:
+                          FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
+  // ==========================================================
+  // REMINDER CARD
+  // ==========================================================
+
+  Widget _reminderCard({
+
+    required IconData icon,
+
+    required String title,
+
+    required String subtitle,
+
+    required bool enabled,
+
+    required TimeOfDay time,
+
+    required ValueChanged<bool>
+        onToggle,
+
+    required VoidCallback
+        onTimeTap,
+  }) {
+
+    return Container(
+
+      padding:
+          const EdgeInsets.all(16),
+
+      decoration:
+          BoxDecoration(
+
+        color:
+            Colors.white,
+
+        borderRadius:
+            BorderRadius.circular(
+          16,
+        ),
+
+        border:
+            Border.all(
+          color:
+              Colors.black12,
+        ),
+      ),
+
+
+      child: Column(
+
+        children: [
+
+          Row(
+
+            children: [
+
+              Container(
+
+                width: 42,
+                height: 42,
+
+                decoration:
+                    BoxDecoration(
+
+                  color:
+                      AshaColors.peach,
+
+                  borderRadius:
+                      BorderRadius.circular(
+                    12,
+                  ),
+                ),
+
+                child:
+                    Icon(
+                  icon,
+                  color:
+                      AshaColors.coral,
+                ),
+              ),
+
+
+              const SizedBox(
+                width: 12,
+              ),
+
+
+              Expanded(
+
+                child: Column(
+
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+
+                  children: [
+
+                    Text(
+
+                      title,
+
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 3,
+                    ),
+
+                    Text(
+
+                      subtitle,
+
+                      style:
+                          const TextStyle(
+                        color:
+                            AshaColors.slate,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+
+              Switch(
+
+                value:
+                    enabled,
+
+                activeThumbColor:
+                    AshaColors.coral,
+
+                onChanged:
+                    onToggle,
+              ),
+            ],
+          ),
+
+
+          if (enabled) ...[
+
+            const SizedBox(
+              height: 12,
+            ),
+
+            InkWell(
+
+              onTap:
+                  onTimeTap,
+
+              borderRadius:
+                  BorderRadius.circular(
+                12,
+              ),
+
+              child: Container(
+
+                width:
+                    double.infinity,
+
+                padding:
+                    const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+
+                decoration:
+                    BoxDecoration(
+
+                  color:
+                      AshaColors.lavender,
+
+                  borderRadius:
+                      BorderRadius.circular(
+                    12,
+                  ),
+                ),
+
+                child: Row(
+
+                  children: [
+
+                    const Icon(
+                      Icons.access_time_rounded,
+                      size: 20,
+                    ),
+
+                    const SizedBox(
+                      width: 8,
+                    ),
+
+                    Text(
+
+                      _formatTime(
+                        time,
+                      ),
+
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+
+                    const Spacer(),
+
+                    const Text(
+                      'Change',
+                      style:
+                          TextStyle(
+                        fontSize: 12,
+                        fontWeight:
+                            FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }

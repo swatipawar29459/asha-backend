@@ -2,241 +2,284 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HealthProfileStore {
- static int? age;
+  // ==================================================
+  // USER
+  // ==================================================
 
- static int cycleLength = 28;
- static int? periodLength;
+  static int? userId;
+  static String userName = '';
 
- static int stress = 3;
+  // ==================================================
+  // HEALTH PROFILE
+  // ==================================================
 
- // NEW
- static double? bmi;
- static int exerciseFrequency = 1;
- // 0 = Low, 1 = Moderate, 2 = High
+  static int? age;
 
- static double sleepHours = 7;
+  static int cycleLength = 28;
+  static int? periodLength;
 
- static String diet = 'Low Carb';
+  static int stress = 3;
 
- static int pcos = 0;
+  static double? bmi;
 
- static Set<String> symptoms = {};
+  // 0 = Low, 1 = Moderate, 2 = High
+  static int exerciseFrequency = 1;
 
- static DateTime? lastPeriodDate;
+  static double sleepHours = 7;
 
- static List<DateTime> periodHistory = [];
+  static String diet = 'Low Carb';
 
- static DateTime? get predictedNextPeriod {
- if (lastPeriodDate == null) return null;
+  static int pcos = 0;
 
- return lastPeriodDate!.add(
- Duration(days: cycleLength),
- );
- }
+  static Set<String> symptoms = {};
 
- static DateTime? get ovulationDate {
- final next = predictedNextPeriod;
+  static DateTime? lastPeriodDate;
 
- if (next == null) return null;
+  static List<DateTime> periodHistory = [];
 
- return next.subtract(
- const Duration(days: 14),
- );
- }
+  // ==================================================
+  // PREDICTION DATES
+  // ==================================================
 
- static DateTimeRange? get fertileWindow {
- final ov = ovulationDate;
+  static DateTime? get predictedNextPeriod {
+    if (lastPeriodDate == null) return null;
 
- if (ov == null) return null;
+    return lastPeriodDate!.add(
+      Duration(days: cycleLength),
+    );
+  }
 
- return DateTimeRange(
- start: ov.subtract(
- const Duration(days: 5),
- ),
- end: ov,
- );
- }
+  static DateTime? get ovulationDate {
+    final next = predictedNextPeriod;
 
- static String get fertileWindowLabel {
- final w = fertileWindow;
+    if (next == null) return null;
 
- if (w == null) {
- return 'Add your last period date';
- }
+    return next.subtract(
+      const Duration(days: 14),
+    );
+  }
 
- return '${w.start.day}/${w.start.month} – '
- '${w.end.day}/${w.end.month}';
- }
+  static DateTimeRange? get fertileWindow {
+    final ov = ovulationDate;
 
- static String get nextPeriodDisplay {
- final d = predictedNextPeriod;
+    if (ov == null) return null;
 
- if (d == null) {
- return 'Add your last period date';
- }
+    return DateTimeRange(
+      start: ov.subtract(
+        const Duration(days: 5),
+      ),
+      end: ov,
+    );
+  }
 
- return '${d.day}/${d.month}/${d.year}';
- }
+  static String get fertileWindowLabel {
+    final w = fertileWindow;
 
- // ==================================================
- // SAVE
- // ==================================================
+    if (w == null) {
+      return 'Add your last period date';
+    }
 
- static Future<void> save() async {
- final prefs =
- await SharedPreferences.getInstance();
+    return '${w.start.day}/${w.start.month} – '
+        '${w.end.day}/${w.end.month}';
+  }
 
- await prefs.setInt(
- 'cycleLength',
- cycleLength,
- );
+  static String get nextPeriodDisplay {
+    final d = predictedNextPeriod;
 
- if (periodLength != null) {
- await prefs.setInt(
- 'periodLength',
- periodLength!,
- );
- }
+    if (d == null) {
+      return 'Add your last period date';
+    }
 
- if (age != null) {
- await prefs.setInt(
- 'age',
- age!,
- );
- }
+    return '${d.day}/${d.month}/${d.year}';
+  }
 
- await prefs.setInt(
- 'stress',
- stress,
- );
+  // ==================================================
+  // SAVE
+  // ==================================================
 
- // NEW
- if (bmi != null) {
- await prefs.setDouble(
- 'bmi',
- bmi!,
- );
- }
+  static Future<void> save() async {
+    final prefs = await SharedPreferences.getInstance();
 
- await prefs.setInt(
- 'exerciseFrequency',
- exerciseFrequency,
- );
+    // USER
+    if (userId != null) {
+      await prefs.setInt('userId', userId!);
+    }
 
- await prefs.setDouble(
- 'sleepHours',
- sleepHours,
- );
+    await prefs.setString(
+      'userName',
+      userName,
+    );
 
- await prefs.setString(
- 'diet',
- diet,
- );
+    // HEALTH PROFILE
+    await prefs.setInt(
+      'cycleLength',
+      cycleLength,
+    );
 
- await prefs.setInt(
- 'pcos',
- pcos,
- );
+    if (periodLength != null) {
+      await prefs.setInt(
+        'periodLength',
+        periodLength!,
+      );
+    }
 
- await prefs.setStringList(
- 'symptoms',
- symptoms.toList(),
- );
+    if (age != null) {
+      await prefs.setInt(
+        'age',
+        age!,
+      );
+    }
 
- if (lastPeriodDate != null) {
- await prefs.setString(
- 'lastPeriodDate',
- lastPeriodDate!.toIso8601String(),
- );
- }
+    await prefs.setInt(
+      'stress',
+      stress,
+    );
 
- await prefs.setStringList(
- 'periodHistory',
- periodHistory
- .map(
- (d) => d.toIso8601String(),
- )
- .toList(),
- );
- }
+    if (bmi != null) {
+      await prefs.setDouble(
+        'bmi',
+        bmi!,
+      );
+    }
 
- // ==================================================
- // LOAD
- // ==================================================
+    await prefs.setInt(
+      'exerciseFrequency',
+      exerciseFrequency,
+    );
 
- static Future<void> load() async {
- final prefs =
- await SharedPreferences.getInstance();
+    await prefs.setDouble(
+      'sleepHours',
+      sleepHours,
+    );
 
- cycleLength =
- prefs.getInt('cycleLength') ?? 28;
+    await prefs.setString(
+      'diet',
+      diet,
+    );
 
- periodLength =
- prefs.getInt('periodLength');
+    await prefs.setInt(
+      'pcos',
+      pcos,
+    );
 
- age =
- prefs.getInt('age');
+    await prefs.setStringList(
+      'symptoms',
+      symptoms.toList(),
+    );
 
- stress =
- prefs.getInt('stress') ?? 3;
+    if (lastPeriodDate != null) {
+      await prefs.setString(
+        'lastPeriodDate',
+        lastPeriodDate!.toIso8601String(),
+      );
+    }
 
- // NEW
- bmi =
- prefs.getDouble('bmi');
+    await prefs.setStringList(
+      'periodHistory',
+      periodHistory
+          .map(
+            (d) => d.toIso8601String(),
+          )
+          .toList(),
+    );
+  }
 
- exerciseFrequency =
- prefs.getInt('exerciseFrequency') ?? 1;
+  // ==================================================
+  // LOAD
+  // ==================================================
 
- sleepHours =
- prefs.getDouble('sleepHours') ?? 7;
+  static Future<void> load() async {
+    final prefs = await SharedPreferences.getInstance();
 
- diet =
- prefs.getString('diet') ?? 'Low Carb';
+    // USER
+    userId = prefs.getInt('userId');
 
- pcos =
- prefs.getInt('pcos') ?? 0;
+    userName = prefs.getString('userName') ?? '';
 
- symptoms =
- (prefs.getStringList('symptoms') ?? [])
- .toSet();
+    // HEALTH PROFILE
+    cycleLength =
+        prefs.getInt('cycleLength') ?? 28;
 
- final lastStr =
- prefs.getString('lastPeriodDate');
+    periodLength =
+        prefs.getInt('periodLength');
 
- if (lastStr != null) {
- lastPeriodDate =
- DateTime.tryParse(lastStr);
- }
+    age =
+        prefs.getInt('age');
 
- final historyStrs =
- prefs.getStringList('periodHistory') ?? [];
+    stress =
+        prefs.getInt('stress') ?? 3;
 
- periodHistory =
- historyStrs
- .map(
- (s) => DateTime.parse(s),
- )
- .toList();
- }
+    bmi =
+        prefs.getDouble('bmi');
 
- // ==================================================
- // JSON FOR FLASK
- // ==================================================
+    exerciseFrequency =
+        prefs.getInt('exerciseFrequency') ?? 1;
 
- static Map<String, dynamic> toJson() {
- return {
- 'age': age,
- 'cycle_length': cycleLength,
- 'period_length': periodLength,
- 'bmi': bmi,
- 'stress_level': stress,
- 'exercise_frequency': exerciseFrequency,
- 'sleep_hours': sleepHours,
- 'diet': diet,
- 'pcos': pcos,
- 'symptoms': symptoms.toList(),
- 'last_period_date':
- lastPeriodDate?.toIso8601String(),
- };
- }
+    sleepHours =
+        prefs.getDouble('sleepHours') ?? 7;
+
+    diet =
+        prefs.getString('diet') ?? 'Low Carb';
+
+    pcos =
+        prefs.getInt('pcos') ?? 0;
+
+    symptoms =
+        (prefs.getStringList('symptoms') ?? [])
+            .toSet();
+
+    final lastStr =
+        prefs.getString('lastPeriodDate');
+
+    if (lastStr != null) {
+      lastPeriodDate =
+          DateTime.tryParse(lastStr);
+    }
+
+    final historyStrs =
+        prefs.getStringList('periodHistory') ?? [];
+
+    periodHistory =
+        historyStrs
+            .map(
+              (s) => DateTime.parse(s),
+            )
+            .toList();
+  }
+
+  // ==================================================
+  // JSON FOR FLASK
+  // ==================================================
+
+  static Map<String, dynamic> toJson() {
+    return {
+      'user_id': userId,
+
+      'user_name': userName,
+
+      'age': age,
+
+      'cycle_length': cycleLength,
+
+      'period_length': periodLength,
+
+      'bmi': bmi,
+
+      'stress_level': stress,
+
+      'exercise_frequency': exerciseFrequency,
+
+      'sleep_hours': sleepHours,
+
+      'diet': diet,
+
+      'pcos': pcos,
+
+      'symptoms': symptoms.toList(),
+
+      'last_period_date':
+          lastPeriodDate?.toIso8601String(),
+    };
+  }
 }
+

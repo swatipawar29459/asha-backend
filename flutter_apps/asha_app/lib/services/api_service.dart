@@ -6,264 +6,275 @@ import '../models/prediction.dart';
 import '../models/doctor.dart';
 import 'health_profile_store.dart';
 
-
-// ==================================================
-// NOTIFICATION MODEL
-// ==================================================
-
 class AshaNotification {
- final String id;
- final String type;
- final String title;
- final String message;
- final String time;
- final bool isRead;
 
- AshaNotification({
- required this.id,
- required this.type,
- required this.title,
- required this.message,
- required this.time,
- required this.isRead,
- });
+  final String id;
+  final String type;
+  final String title;
+  final String message;
+  final String time;
+  final bool isRead;
 
- factory AshaNotification.fromJson(
- Map<String, dynamic> json,
- ) {
- return AshaNotification(
- id: json['id'] ?? '',
- type: json['type'] ?? '',
- title: json['title'] ?? '',
- message: json['message'] ?? '',
- time: json['time'] ?? '',
- isRead: json['is_read'] ?? false,
- );
- }
+  AshaNotification({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.message,
+    required this.time,
+    required this.isRead,
+  });
+
+  factory AshaNotification.fromJson(
+    Map<String, dynamic> json,
+  ) {
+
+    return AshaNotification(
+      id: json['id']?.toString() ?? '',
+      type: json['type']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      message: json['message']?.toString() ?? '',
+      time: json['time']?.toString() ?? '',
+      isRead: json['is_read'] == true,
+    );
+  }
 }
 
 
-// ==================================================
-// API SERVICE
-// ==================================================
-
 class ApiService {
 
- // --------------------------------------------------
- // BASE URL
- // --------------------------------------------------
-
- static const baseUrl =
- 'https://vittikapawar.pythonanywhere.com';
+  static const String baseUrl =
+      'https://asha-backend-1.onrender.com';
 
 
- // ==================================================
- // PREDICTION
- // ==================================================
+  // ==================================================
+  // PREDICTION
+  // ==================================================
 
- static Future<Prediction> fetchPrediction({
- required int userId,
- }) async {
+  static Future<Prediction> fetchPrediction({
+    required String userId,
+  }) async {
 
- // Get the user's actual profile
- final profile =
- HealthProfileStore.toJson();
+    final profile =
+        HealthProfileStore.toJson();
 
- print(
- 'Sending prediction data: $profile',
- );
+    print('Firebase UID: $userId');
+    print('Sending profile: $profile');
 
- final res = await http.post(
- Uri.parse(
- '$baseUrl/predict/$userId',
- ),
- headers: {
- 'Content-Type':
- 'application/json',
- },
- body: jsonEncode(profile),
- );
+    final response = await http.post(
 
- print(
- 'Prediction response: '
- '${res.statusCode} ${res.body}',
- );
+      Uri.parse(
+        '$baseUrl/predict/$userId',
+      ),
 
- if (res.statusCode != 200) {
- throw Exception(
- 'Prediction fetch failed: '
- '${res.body}',
- );
- }
+      headers: {
+        'Content-Type':
+            'application/json',
+      },
 
- return Prediction.fromJson(
- jsonDecode(res.body),
- );
- }
+      body: jsonEncode(profile),
+    );
 
+    print(
+      'Prediction: '
+      '${response.statusCode} '
+      '${response.body}',
+    );
 
- // ==================================================
- // LOG SYMPTOMS
- // ==================================================
+    if (response.statusCode != 200) {
 
- static Future<void> logSymptoms(
- int userId,
- Map<String, dynamic> log,
- ) async {
+      throw Exception(
+        'Prediction failed: ${response.body}',
+      );
+    }
 
- final res = await http.post(
- Uri.parse(
- '$baseUrl/log/$userId',
- ),
- headers: {
- 'Content-Type':
- 'application/json',
- },
- body: jsonEncode(log),
- );
-
- if (res.statusCode != 200) {
- throw Exception(
- 'Could not save symptoms',
- );
- }
- }
+    return Prediction.fromJson(
+      jsonDecode(response.body),
+    );
+  }
 
 
- // ==================================================
- // AI CHAT
- // ==================================================
+  // ==================================================
+  // LOG SYMPTOMS
+  // ==================================================
 
- static Future<String> sendChatMessage(
- String message, {
- List<Map<String, String>> history =
- const [],
- }) async {
+  static Future<void> logSymptoms(
+    String userId,
+    Map<String, dynamic> log,
+  ) async {
 
- final res = await http.post(
- Uri.parse(
- '$baseUrl/chat',
- ),
- headers: {
- 'Content-Type':
- 'application/json',
- },
- body: jsonEncode({
- 'message': message,
- 'history': history,
- }),
- );
+    final response = await http.post(
 
- if (res.statusCode != 200) {
- throw Exception(
- 'Could not reach Asha AI',
- );
- }
+      Uri.parse(
+        '$baseUrl/log/$userId',
+      ),
 
- final data =
- jsonDecode(res.body);
+      headers: {
+        'Content-Type':
+            'application/json',
+      },
 
- return data['reply'];
- }
+      body: jsonEncode(log),
+    );
+
+    if (response.statusCode != 200) {
+
+      throw Exception(
+        'Could not save symptoms',
+      );
+    }
+  }
 
 
- // ==================================================
- // NOTIFICATIONS
- // ==================================================
+  // ==================================================
+  // AI CHAT
+  // ==================================================
 
- static Future<List<AshaNotification>>
- fetchNotifications({
- required int userId,
- }) async {
+  static Future<String> sendChatMessage(
+    String message, {
+    List<Map<String, String>> history =
+        const [],
+  }) async {
 
- final res = await http.get(
- Uri.parse(
- '$baseUrl/notifications/$userId',
- ),
- );
+    final response = await http.post(
 
- if (res.statusCode != 200) {
- throw Exception(
- 'Could not load notifications',
- );
- }
+      Uri.parse(
+        '$baseUrl/chat',
+      ),
 
- final body =
- jsonDecode(res.body);
+      headers: {
+        'Content-Type':
+            'application/json',
+      },
 
- final List notifications =
- body['notifications'] ?? [];
+      body: jsonEncode({
+        'message': message,
+        'history': history,
+      }),
+    );
 
- return notifications
- .map(
- (notification) =>
- AshaNotification.fromJson(
- Map<String, dynamic>.from(
- notification,
- ),
- ),
- )
- .toList();
- }
+    if (response.statusCode != 200) {
 
+      throw Exception(
+        'Could not reach Asha AI',
+      );
+    }
 
- // ==================================================
- // FIND DOCTORS
- // ==================================================
+    final data =
+        jsonDecode(response.body);
 
- static Future<List<Doctor>> findDoctors(
- double lat,
- double lng,
- ) async {
-
- final res = await http.get(
- Uri.parse(
- '$baseUrl/doctors'
- '?lat=$lat&lng=$lng',
- ),
- );
-
- if (res.statusCode != 200) {
- throw Exception(
- 'Could not find nearby doctors',
- );
- }
-
- final body =
- jsonDecode(res.body);
-
- return (body['results'] as List)
- .map(
- (d) => Doctor.fromJson(d),
- )
- .toList();
- }
+    return data['reply']?.toString() ??
+        'Sorry, I could not respond.';
+  }
 
 
- // ==================================================
- // GEOCODE ADDRESS
- // ==================================================
+  // ==================================================
+  // NOTIFICATIONS
+  // ==================================================
 
- static Future<Map<String, dynamic>>
- geocodeAddress(
- String address,
- ) async {
+  static Future<List<AshaNotification>>
+      fetchNotifications({
+    required String userId,
+  }) async {
 
- final res = await http.get(
- Uri.parse(
- '$baseUrl/geocode?address='
- '${Uri.encodeComponent(address)}',
- ),
- );
+    final response = await http.get(
 
- if (res.statusCode != 200) {
- throw Exception(
- 'Location not found',
- );
- }
+      Uri.parse(
+        '$baseUrl/notifications/$userId',
+      ),
+    );
 
- return jsonDecode(
- res.body,
- );
- }
+    if (response.statusCode != 200) {
+
+      throw Exception(
+        'Could not load notifications',
+      );
+    }
+
+    final body =
+        jsonDecode(response.body);
+
+    final List list =
+        body['notifications'] ?? [];
+
+    return list
+        .map(
+          (item) =>
+              AshaNotification.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList();
+  }
+
+
+  // ==================================================
+  // FIND DOCTORS
+  // ==================================================
+
+  static Future<List<Doctor>> findDoctors(
+    double lat,
+    double lng,
+  ) async {
+
+    final response = await http.get(
+
+      Uri.parse(
+        '$baseUrl/doctors'
+        '?lat=$lat&lng=$lng',
+      ),
+    );
+
+    if (response.statusCode != 200) {
+
+      throw Exception(
+        'Could not find nearby doctors',
+      );
+    }
+
+    final body =
+        jsonDecode(response.body);
+
+    final List results =
+        body['results'] ?? [];
+
+    return results
+        .map(
+          (item) =>
+              Doctor.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList();
+  }
+
+
+  // ==================================================
+  // GEOCODE
+  // ==================================================
+
+  static Future<Map<String, dynamic>>
+      geocodeAddress(
+    String address,
+  ) async {
+
+    final response = await http.get(
+
+      Uri.parse(
+        '$baseUrl/geocode'
+        '?address='
+        '${Uri.encodeComponent(address)}',
+      ),
+    );
+
+    if (response.statusCode != 200) {
+
+      throw Exception(
+        'Location not found',
+      );
+    }
+
+    return Map<String, dynamic>.from(
+      jsonDecode(response.body),
+    );
+  }
 }
