@@ -77,18 +77,30 @@ class _HomeScreenState extends State<HomeScreen> {
         userId: user.uid,
       );
 
+      print('Prediction object created successfully.');
+      print('PCOS Risk: ${p.pcosRisk}');
+      print('Current Day: ${p.currentDay}');
+      print('Phase: ${p.phaseLabel}');
+      print('Confidence: ${p.confidence}');
+      print('Next Period: ${p.nextPeriodLabel}');
+      print('Fertile Window: ${p.fertileWindowLabel}');
+      print('Cycle Progress: ${p.cycleProgress}');
+
       if (!mounted) return;
 
       setState(() {
         prediction = p;
         loading = false;
       });
-    } catch (e) {
-      if (!mounted) return;
+    } catch (e, stackTrace) {
+      print('================================');
+      print('HOME ERROR: $e');
+      print('ERROR TYPE: ${e.runtimeType}');
+      print('STACK TRACE:');
+      print(stackTrace);
+      print('================================');
 
-      print(
-        'Home error: $e',
-      );
+      if (!mounted) return;
 
       setState(() {
         error =
@@ -476,7 +488,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // PCOS
 
-            if (p.pcosRisk)
+            if (p.pcosRisk == 'Moderate' ||
+                p.pcosRisk == 'High')
               AshaCard(
                 child: Column(
                   crossAxisAlignment:

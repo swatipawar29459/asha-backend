@@ -1,24 +1,28 @@
-import os
-from datetime import datetime, timedelta
 
-import joblib
-import requests
-from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import joblib
+import pandas as pd
+import requests
+import os
 from openai import OpenAI
+from dotenv import load_dotenv
+from datetime import datetime
 
 
 # ============================================================
-# LOAD ENVIRONMENT
+# LOAD ENVIRONMENT VARIABLES
 # ============================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+load_dotenv(
+    os.path.join(BASE_DIR, ".env")
+)
 
 
 # ============================================================
-# FLASK
+# FLASK SETUP
 # ============================================================
 
 app = Flask(__name__)
@@ -26,22 +30,63 @@ CORS(app)
 
 
 # ============================================================
-# OPENROUTER
+# OPENROUTER / AI SETUP
 # ============================================================
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_API_KEY = os.environ.get(
+    "OPENROUTER_API_KEY"
+)
 
 client = None
 
 if OPENROUTER_API_KEY:
     client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
-        api_key=OPENROUTER_API_KEY,
+        api_key=OPENROUTER_API_KEY
     )
 
 
 # ============================================================
-# LOAD ML MODEL
+# ASHA AI SYSTEM PROMPT
+# ============================================================
+
+SYSTEM_PROMPT = (
+    "You are Asha, a warm and supportive women's menstrual "
+    "wellness companion. "
+
+    "You help users understand menstruation, menstrual cycles, "
+    "periods, ovulation, PMS, common menstrual symptoms, "
+    "reproductive wellness, self-care, and general women's "
+    "health education. "
+
+    "Respond naturally and conversationally. "
+
+    "Use conversation history to understand what the user means. "
+
+    "You are not a doctor and must never diagnose a medical "
+    "condition. "
+
+    "Do not claim certainty about a user's health. "
+
+    "Give general educational and wellness information. "
+
+    "If the user describes severe, persistent, unusual, or "
+    "potentially dangerous symptoms, recommend consulting "
+    "a qualified healthcare professional. "
+
+    "Be warm, empathetic, clear, and easy to understand. "
+
+    "Keep answers reasonably short unless the user asks for "
+    "more detail. "
+
+    "If a question is completely unrelated to women's health, "
+    "politely explain that Asha is primarily designed for "
+    "women's menstrual and wellness questions."
+)
+
+
+# ============================================================
+# LOAD MACHINE LEARNING MODEL
 # ============================================================
 
 MODEL_PATH = os.path.join(
@@ -64,7 +109,7 @@ except Exception as e:
 def get_number(data, key, default=None):
     value = data.get(key, default)
 
-    if value is None or value == "":
+    if value is None:
         return default
 
     try:
@@ -74,9 +119,13 @@ def get_number(data, key, default=None):
 
 
 def get_int(data, key, default=None):
+    """
+    Safely convert a value received from Flutter to integer.
+    """
+
     value = data.get(key, default)
 
-    if value is None or value == "":
+    if value is None:
         return default
 
     try:
@@ -86,131 +135,68 @@ def get_int(data, key, default=None):
 
 
 def encode_exercise(value):
+    """
+    Convert Flutter exercise value to numeric value.
+
+    Low -> 0
+    Moderate -> 1
+    High -> 2
+    """
+
     if value is None:
         return 1
 
-    if isinstance(value, int):
-        return value
+    if isinstance(value, (int, float)):
+        return int(value)
 
     value = str(value).strip().lower()
 
-    if value == "low":
-        return 0
+    mapping = {
+        "low": 0,
+        "moderate": 1,
+        "high": 2
+    }
 
-    if value == "moderate":
-        return 1
-
-    if value == "high":
-        return 2
-
-    try:
-        return int(float(value))
-    except (TypeError, ValueError):
-        return 1
+    return mapping.get(value, 1)
 
 
 def encode_diet(value):
+    """
+    Convert Flutter diet value to numeric value.
+
+    IMPORTANT:
+    This mapping must match the mapping used
+    when the ML model was trained.
+    """
+
     if value is None:
         return 0
 
-    if isinstance(value, int):
-        return value
+    if isinstance(value, (int, float)):
+        return int(value)
 
     value = str(value).strip().lower()
 
-    if value == "low carb":
-        return 0
-
-    if value == "balanced":
-        return 1
-
-    if value == "vegetarian":
-        return 2
-
-    if value == "high protein":
-        return 3
-
-    try:
-        return int(float(value))
-    except (TypeError, ValueError):
-        return 0
-
-
-def parse_date(value):
-    if not value:
-        return None
-
-    try:
-        return datetime.fromisoformat(
-            str(value).replace("Z", "+00:00")
-        )
-    except Exception:
-        return None
-
-
-def format_date(date):
-    return date.strftime("%d/%m/%Y")
-
-
-def calculate_cycle_info(last_period, cycle_length):
-    """
-    Calculate current cycle day, next period,
-    ovulation and fertile window.
-    """
-
-    if last_period is None:
-        return None
-
-    last_period = last_period.replace(
-        tzinfo=None
-    )
-
-    today = datetime.now()
-
-    current_cycle_day = (
-        today.date() -
-        last_period.date()
-    ).days + 1
-
-    current_cycle_day = max(
-        1,
-        current_cycle_day
-    )
-
-    next_period = (
-        last_period +
-        timedelta(days=cycle_length)
-    )
-
-    ovulation_date = (
-        next_period -
-        timedelta(days=14)
-    )
-
-    fertile_start = (
-        ovulation_date -
-        timedelta(days=5)
-    )
-
-    fertile_end = ovulation_date
-
-    return {
-        "current_cycle_day": current_cycle_day,
-        "next_period": next_period,
-        "ovulation_date": ovulation_date,
-        "fertile_start": fertile_start,
-        "fertile_end": fertile_end,
+    mapping = {
+        "low carb": 0,
+        "balanced": 1,
+        "vegetarian": 2,
+        "high protein": 3
     }
 
+    return mapping.get(value, 0)
+
 
 # ============================================================
-# HOME / HEALTH CHECK
+# HEALTH CHECK
 # ============================================================
 
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
+
     return jsonify({
-        "status": "Asha backend is online"
+        "status": "online",
+        "message": "Asha Flask backend is running"
     })
 
 
@@ -226,16 +212,32 @@ def predict(user_id):
 
     try:
 
-        data = request.get_json() or {}
+        # ----------------------------------------------------
+        # CHECK MODEL
+        # ----------------------------------------------------
 
-        print(
-            f"Prediction request received for user: {user_id}"
-        )
+        if model is None:
 
-        print("Prediction data:", data)
+            return jsonify({
+                "error": "ML model is not loaded"
+            }), 500
+
 
         # ----------------------------------------------------
-        # REQUIRED VALUES
+        # GET JSON DATA
+        # ----------------------------------------------------
+
+        data = request.get_json()
+
+        if not data:
+
+            return jsonify({
+                "error": "No user data received"
+            }), 400
+
+
+        # ----------------------------------------------------
+        # GET USER DATA FROM FLUTTER
         # ----------------------------------------------------
 
         age = get_int(
@@ -245,59 +247,24 @@ def predict(user_id):
 
         cycle_length = get_int(
             data,
-            "cycle_length",
-            28
+            "cycle_length"
         )
 
         period_length = get_int(
             data,
-            "period_length",
-            5
+            "period_length"
         )
 
-        if age is None:
-            return jsonify({
-                "error": "Age is required."
-            }), 400
-
-        if cycle_length is None:
-            return jsonify({
-                "error": "Cycle length is required."
-            }), 400
-
-        if period_length is None:
-            return jsonify({
-                "error": "Period length is required."
-            }), 400
-
-        # ----------------------------------------------------
-        # OTHER FEATURES
-        # ----------------------------------------------------
-
-        bmi = get_number(
-            data,
-            "bmi",
-            22.0
-        )
-
-        stress_level = get_int(
+        stress = get_int(
             data,
             "stress_level",
             3
         )
 
-        exercise_frequency = encode_exercise(
-            data.get("exercise_frequency")
-        )
-
         sleep_hours = get_number(
             data,
             "sleep_hours",
-            7.0
-        )
-
-        diet = encode_diet(
-            data.get("diet")
+            7
         )
 
         pcos = get_int(
@@ -306,190 +273,314 @@ def predict(user_id):
             0
         )
 
+        bmi = get_number(
+            data,
+            "bmi",
+            22
+        )
+
+        exercise = encode_exercise(
+            data.get("exercise_frequency")
+        )
+
+        diet = encode_diet(
+            data.get("diet")
+        )
+
+
         # ----------------------------------------------------
-        # MODEL FEATURES
+        # VALIDATE REQUIRED VALUES
         # ----------------------------------------------------
 
-        features = [[
-            cycle_length,
-            period_length,
-            age,
-            bmi,
-            stress_level,
-            exercise_frequency,
-            sleep_hours,
-            diet,
-            pcos,
-        ]]
+        missing = []
+
+        if age is None:
+            missing.append("age")
+
+        if cycle_length is None:
+            missing.append("cycle_length")
+
+        if period_length is None:
+            missing.append("period_length")
+
+        if missing:
+
+            return jsonify({
+                "error": "Missing required user data",
+                "missing": missing
+            }), 400
+
 
         # ----------------------------------------------------
-        # MODEL PREDICTION
+        # CREATE ML INPUT
         # ----------------------------------------------------
 
-        if model is not None:
+        raw = {
 
-            predicted_cycle_length = model.predict(
-                features
-            )[0]
+            "Cycle Length": cycle_length,
 
-            predicted_cycle_length = int(
-                round(predicted_cycle_length)
-            )
+            "Period Length": period_length,
 
-        else:
+            "Age": age,
 
-            predicted_cycle_length = cycle_length
+            "BMI": bmi,
 
-        # Prevent unreasonable predictions
+            "Stress Level": stress,
+
+            "Exercise Frequency": exercise,
+
+            "Sleep Hours": sleep_hours,
+
+            "Diet": diet,
+
+            "PCOS": pcos
+        }
+
+
+        feature_order = [
+
+            "Cycle Length",
+
+            "Period Length",
+
+            "Age",
+
+            "BMI",
+
+            "Stress Level",
+
+            "Exercise Frequency",
+
+            "Sleep Hours",
+
+            "Diet",
+
+            "PCOS"
+        ]
+
+
+        features = pd.DataFrame(
+            [raw]
+        )[feature_order]
+
+
+        # ----------------------------------------------------
+        # ML PREDICTION
+        # ----------------------------------------------------
+
+        predicted_cycle_length = float(
+            model.predict(features)[0]
+        )
+
         predicted_cycle_length = max(
-            20,
-            min(
-                predicted_cycle_length,
-                45
-            )
+            1,
+            round(predicted_cycle_length)
         )
 
+
         # ----------------------------------------------------
-        # LAST PERIOD
+        # LAST PERIOD DATE
         # ----------------------------------------------------
 
-        last_period = parse_date(
-            data.get("last_period_date")
+        last_period_date = data.get(
+            "last_period_date"
         )
 
-        cycle_info = calculate_cycle_info(
-            last_period,
+        current_day = 1
+
+        if last_period_date:
+
+            try:
+
+                last_date = datetime.fromisoformat(
+                    last_period_date.replace(
+                        "Z",
+                        "+00:00"
+                    )
+                )
+
+                if last_date.tzinfo:
+
+                    today = datetime.now(
+                        last_date.tzinfo
+                    )
+
+                else:
+
+                    today = datetime.now()
+
+
+                current_day = (
+                    today.date()
+                    - last_date.date()
+                ).days + 1
+
+                current_day = max(
+                    1,
+                    current_day
+                )
+
+            except Exception as e:
+
+                print(
+                    "Last period date error:",
+                    e
+                )
+
+                current_day = 1
+
+
+        # ----------------------------------------------------
+        # CYCLE PROGRESS
+        # ----------------------------------------------------
+
+        cycle_progress = (
+            current_day /
             predicted_cycle_length
         )
 
-        # ----------------------------------------------------
-        # DEFAULT VALUES
-        # ----------------------------------------------------
-
-        current_cycle_day = 1
-        next_period = None
-        ovulation_date = None
-        fertile_start = None
-        fertile_end = None
-        cycle_progress = 0.0
-        phase_label = "Unknown"
-
-        if cycle_info:
-
-            current_cycle_day = cycle_info[
-                "current_cycle_day"
-            ]
-
-            next_period = cycle_info[
-                "next_period"
-            ]
-
-            ovulation_date = cycle_info[
-                "ovulation_date"
-            ]
-
-            fertile_start = cycle_info[
-                "fertile_start"
-            ]
-
-            fertile_end = cycle_info[
-                "fertile_end"
-            ]
-
-            cycle_progress = (
-                current_cycle_day /
-                predicted_cycle_length
+        cycle_progress = max(
+            0.0,
+            min(
+                cycle_progress,
+                1.0
             )
+        )
 
-            cycle_progress = max(
-                0.0,
-                min(
-                    cycle_progress,
-                    1.0
-                )
-            )
-
-            # ------------------------------------------------
-            # CYCLE PHASE
-            # ------------------------------------------------
-
-            if current_cycle_day <= period_length:
-
-                phase_label = "Menstrual Phase"
-
-            elif current_cycle_day < (
-                predicted_cycle_length - 14
-            ):
-
-                phase_label = "Follicular Phase"
-
-            elif current_cycle_day <= (
-                predicted_cycle_length - 12
-            ):
-
-                phase_label = "Ovulation Phase"
-
-            else:
-
-                phase_label = "Luteal Phase"
 
         # ----------------------------------------------------
-        # PCOS RISK
+        # DAYS UNTIL NEXT PERIOD
         # ----------------------------------------------------
 
-        if pcos == 1:
+        days_until_period = (
+            predicted_cycle_length
+            - current_day
+        )
 
-            pcos_risk = "Higher"
+        if days_until_period <= 0:
 
-        elif stress_level >= 4:
-
-            pcos_risk = "Moderate"
+            next_period_label = "Period may be due"
 
         else:
 
-            pcos_risk = "Low"
+            next_period_label = (
+                f"In {days_until_period} days"
+            )
+
 
         # ----------------------------------------------------
-        # RESPONSE
+        # CYCLE PHASE
         # ----------------------------------------------------
 
-        response = {
-            "user_id": user_id,
-            "predicted_cycle_length":
-                predicted_cycle_length,
-            "current_day":
-                current_cycle_day,
-            "cycle_progress":
-                cycle_progress,
-            "phase_label":
-                phase_label,
-            "confidence":
-                85,
-            "next_period":
-                format_date(next_period)
-                if next_period
-                else None,
-            "fertile_window":
-                (
-                    f"{format_date(fertile_start)} – "
-                    f"{format_date(fertile_end)}"
-                )
-                if fertile_start and fertile_end
-                else None,
-            "ovulation_date":
-                format_date(ovulation_date)
-                if ovulation_date
-                else None,
-            "pcos_risk":
-                pcos_risk,
-        }
+        if current_day <= 5:
 
-        print(
-            "Prediction response:",
-            response
+            phase_label = "Menstrual phase"
+
+        elif current_day <= 13:
+
+            phase_label = "Follicular phase"
+
+        elif current_day <= 16:
+
+            phase_label = "Ovulation approaching"
+
+        else:
+
+            phase_label = "Luteal phase"
+
+
+        # ----------------------------------------------------
+        # FERTILE WINDOW
+        # ----------------------------------------------------
+
+        ovulation_day = (
+            predicted_cycle_length - 14
         )
 
-        return jsonify(response)
+        fertile_start = (
+            ovulation_day - 5
+        )
+
+        fertile_end = ovulation_day
+
+        fertile_window_label = (
+            f"Cycle days "
+            f"{max(1, fertile_start)}–"
+            f"{max(1, fertile_end)}"
+        )
+
+
+        # ----------------------------------------------------
+        # PCOS WELLNESS SIGNAL
+        # ----------------------------------------------------
+
+        pcos_risk = (
+            True
+            if pcos == 1
+            else False
+        )
+
+
+        # ----------------------------------------------------
+        # RETURN RESULT
+        # ----------------------------------------------------
+
+        return jsonify({
+
+            "user_id":
+                user_id,
+
+            "current_day":
+                current_day,
+
+            "phase_label":
+                phase_label,
+
+            "confidence":
+                87,
+
+            "next_period_label":
+                next_period_label,
+
+            "fertile_window_label":
+                fertile_window_label,
+
+            "cycle_progress":
+                cycle_progress,
+
+            "predicted_cycle_length":
+                predicted_cycle_length,
+
+            "factor_weights": {
+
+                "sleep":
+                    0.70,
+
+                "stress":
+                    0.55,
+
+                "exercise":
+                    0.30,
+
+                "history":
+                    0.85
+            },
+
+            "pcos_risk":
+                pcos_risk,
+
+            "avg_cycle_length":
+                cycle_length,
+
+            "avg_period_length":
+                period_length,
+
+            "cycle_length_history": [
+                cycle_length
+            ]
+
+        })
+
 
     except Exception as e:
 
@@ -499,8 +590,13 @@ def predict(user_id):
         )
 
         return jsonify({
-            "error": "Prediction failed.",
-            "details": str(e)
+
+            "error":
+                "Prediction failed",
+
+            "details":
+                str(e)
+
         }), 500
 
 
@@ -516,29 +612,41 @@ def log_symptoms(user_id):
 
     try:
 
-        data = request.get_json() or {}
-
-        print(
-            f"Log received for user {user_id}:",
-            data
-        )
+        data = request.get_json()
 
         return jsonify({
-            "success": True,
-            "user_id": user_id,
-            "message": "Symptoms logged successfully.",
-            "data": data
+
+            "status":
+                "saved",
+
+            "user_id":
+                user_id,
+
+            "data":
+                data
+
         })
 
     except Exception as e:
 
+        print(
+            "Log error:",
+            e
+        )
+
         return jsonify({
-            "error": str(e)
+
+            "error":
+                "Could not save log",
+
+            "details":
+                str(e)
+
         }), 500
 
 
 # ============================================================
-# CHAT
+# AI CHAT
 # ============================================================
 
 @app.route(
@@ -549,83 +657,154 @@ def chat():
 
     try:
 
-        data = request.get_json() or {}
+        data = request.get_json()
 
-        message = data.get(
-            "message",
-            ""
-        )
+        if not data:
+
+            return jsonify({
+                "error":
+                    "Request body is required"
+            }), 400
+
+
+        if "message" not in data:
+
+            return jsonify({
+                "error":
+                    "Message is required"
+            }), 400
+
+
+        if client is None:
+
+            return jsonify({
+                "error":
+                    "OpenRouter API key is not configured"
+            }), 500
+
+
+        user_message = data["message"]
 
         history = data.get(
             "history",
             []
         )
 
-        if not message:
-            return jsonify({
-                "error": "Message is required."
-            }), 400
-
-        if client is None:
-            return jsonify({
-                "error":
-                    "OpenRouter API key is not configured."
-            }), 500
 
         messages = [
+
             {
-                "role": "system",
-                "content": (
-                    "You are Asha, a friendly women's "
-                    "health assistant. Give helpful, "
-                    "clear and supportive wellness "
-                    "information. Do not diagnose serious "
-                    "medical conditions. Encourage the "
-                    "user to consult a qualified doctor "
-                    "when appropriate."
-                ),
+                "role":
+                    "system",
+
+                "content":
+                    SYSTEM_PROMPT
             }
+
         ]
 
-        # Add previous chat history
-        for item in history:
 
-            role = item.get("role")
-            content = item.get("content")
+        # ----------------------------------------------------
+        # CONVERSATION HISTORY
+        # ----------------------------------------------------
 
-            if role in ["user", "assistant"] and content:
+        if isinstance(history, list):
+
+            for message in history:
+
+                if not isinstance(
+                    message,
+                    dict
+                ):
+                    continue
+
+                role = message.get(
+                    "role"
+                )
+
+                content = message.get(
+                    "content"
+                )
+
+                if role not in [
+                    "user",
+                    "assistant"
+                ]:
+                    continue
+
+                if not content:
+                    continue
 
                 messages.append({
-                    "role": role,
-                    "content": content
+
+                    "role":
+                        role,
+
+                    "content":
+                        str(content)
+
                 })
 
+
+        # ----------------------------------------------------
+        # CURRENT USER MESSAGE
+        # ----------------------------------------------------
+
         messages.append({
-            "role": "user",
-            "content": message
+
+            "role":
+                "user",
+
+            "content":
+                str(user_message)
+
         })
 
-        completion = client.chat.completions.create(
+
+        # ----------------------------------------------------
+        # OPENROUTER REQUEST
+        # ----------------------------------------------------
+
+        response = client.chat.completions.create(
+
             model="openrouter/free",
-            messages=messages,
+
+            messages=messages
+
         )
 
-        reply = completion.choices[0].message.content
+
+        reply = (
+            response
+            .choices[0]
+            .message
+            .content
+        )
+
 
         return jsonify({
-            "reply": reply
+
+            "reply":
+                reply
+
         })
+
 
     except Exception as e:
 
         print(
-            "Chat error:",
+            "OpenRouter error:",
             e
         )
 
         return jsonify({
-            "error": "Chat failed.",
-            "details": str(e)
+
+            "error":
+                "Could not reach Asha AI",
+
+            "details":
+                str(e)
+
         }), 500
 
 
@@ -634,450 +813,239 @@ def chat():
 # ============================================================
 
 @app.route(
-    "/notifications/<user_id>",
-    methods=["POST"]
+    "/notifications/<user_id>"
 )
 def notifications(user_id):
 
-    try:
+    return jsonify({
 
-        # ----------------------------------------------------
-        # RECEIVE JSON FROM FLUTTER
-        # ----------------------------------------------------
+        "notifications": [
 
-        data = request.get_json(
-            silent=True
-        ) or {}
+            {
 
-        print(
-            f"Notification request for user {user_id}:",
-            data
-        )
+                "id":
+                    "symptom_reminder",
 
-        last_period_string = data.get(
-            "last_period_date"
-        )
+                "type":
+                    "symptom",
 
-        cycle_length = get_int(
-            data,
-            "cycle_length",
-            28
-        )
+                "title":
+                    "How are you feeling today?",
 
-        period_length = get_int(
-            data,
-            "period_length",
-            5
-        )
-
-        last_period = parse_date(
-            last_period_string
-        )
-
-        notifications_list = []
-
-        # ----------------------------------------------------
-        # NO LAST PERIOD
-        # ----------------------------------------------------
-
-        if last_period is None:
-
-            notifications_list.append({
-                "id": "cycle",
-                "type": "cycle",
-                "title": "Update your cycle",
                 "message":
-                    "Add your last period date so Asha can personalize your cycle predictions.",
-                "time": "Today",
-                "is_read": False
-            })
+                    "Take a moment to log your symptoms.",
 
-        else:
+                "time":
+                    "Today",
 
-            last_period = last_period.replace(
-                tzinfo=None
-            )
+                "is_read":
+                    False
 
-            today = datetime.now()
+            },
 
-            # ------------------------------------------------
-            # CURRENT CYCLE DAY
-            # ------------------------------------------------
+            {
 
-            current_cycle_day = (
-                today.date()
-                -
-                last_period.date()
-            ).days + 1
+                "id":
+                    "wellness",
 
-            current_cycle_day = max(
-                1,
-                current_cycle_day
-            )
+                "type":
+                    "wellness",
 
-            # ------------------------------------------------
-            # NEXT PERIOD
-            # ------------------------------------------------
+                "title":
+                    "Take care of yourself today",
 
-            next_period = (
-                last_period
-                +
-                timedelta(
-                    days=cycle_length
-                )
-            )
-
-            # ------------------------------------------------
-            # FERTILE WINDOW
-            # ------------------------------------------------
-
-            ovulation_date = (
-                next_period
-                -
-                timedelta(
-                    days=14
-                )
-            )
-
-            fertile_start = (
-                ovulation_date
-                -
-                timedelta(
-                    days=5
-                )
-            )
-
-            fertile_end = ovulation_date
-
-            # ------------------------------------------------
-            # PERIOD NOTIFICATION
-            # ------------------------------------------------
-
-            days_until_period = (
-                next_period.date()
-                -
-                today.date()
-            ).days
-
-            if days_until_period == 0:
-
-                period_message = (
-                    "Your predicted period may start today."
-                )
-
-            elif days_until_period == 1:
-
-                period_message = (
-                    "Your predicted period may start tomorrow."
-                )
-
-            elif days_until_period > 1:
-
-                period_message = (
-                    "Your predicted period is expected on "
-                    f"{format_date(next_period)}."
-                )
-
-            else:
-
-                period_message = (
-                    "Your predicted period date has passed. "
-                    "Update your cycle if your period has started."
-                )
-
-            notifications_list.append({
-                "id": "period",
-                "type": "period",
-                "title": "Your period prediction",
-                "message": period_message,
-                "time": "Today",
-                "is_read": False
-            })
-
-            # ------------------------------------------------
-            # FERTILE WINDOW NOTIFICATION
-            # ------------------------------------------------
-
-            if today.date() < fertile_start.date():
-
-                fertile_message = (
-                    "Your predicted fertile window is "
-                    f"{format_date(fertile_start)} – "
-                    f"{format_date(fertile_end)}."
-                )
-
-            elif (
-                fertile_start.date()
-                <= today.date()
-                <= fertile_end.date()
-            ):
-
-                fertile_message = (
-                    "You are currently within your "
-                    "predicted fertile window: "
-                    f"{format_date(fertile_start)} – "
-                    f"{format_date(fertile_end)}."
-                )
-
-            else:
-
-                # Current fertile window has passed.
-                # Calculate the next one.
-
-                next_ovulation = (
-                    ovulation_date
-                    +
-                    timedelta(
-                        days=cycle_length
-                    )
-                )
-
-                next_fertile_start = (
-                    next_ovulation
-                    -
-                    timedelta(
-                        days=5
-                    )
-                )
-
-                fertile_message = (
-                    "Your next predicted fertile window is "
-                    f"{format_date(next_fertile_start)} – "
-                    f"{format_date(next_ovulation)}."
-                )
-
-            notifications_list.append({
-                "id": "fertile",
-                "type": "fertile",
-                "title": "Fertile window",
-                "message": fertile_message,
-                "time": "Today",
-                "is_read": False
-            })
-
-            # ------------------------------------------------
-            # SYMPTOM NOTIFICATION
-            # ------------------------------------------------
-
-            notifications_list.append({
-                "id": "symptom",
-                "type": "symptom",
-                "title": "How are you feeling today?",
                 "message":
-                    "Take a moment to log your symptoms and keep your cycle history updated.",
-                "time": "Today",
-                "is_read": False
-            })
+                    "Stay hydrated, rest well, and listen to your body.",
 
-            # ------------------------------------------------
-            # WELLNESS NOTIFICATION
-            # ------------------------------------------------
+                "time":
+                    "Today",
 
-            notifications_list.append({
-                "id": "wellness",
-                "type": "wellness",
-                "title": "Take care of yourself today",
-                "message":
-                    "Stay hydrated, get enough rest, and listen to your body.",
-                "time": "Today",
-                "is_read": False
-            })
+                "is_read":
+                    False
 
-        return jsonify({
-            "user_id": user_id,
-            "notifications": notifications_list
-        })
+            }
 
-    except Exception as e:
+        ]
 
-        print(
-            "Notification error:",
-            e
-        )
-
-        return jsonify({
-            "error":
-                "Could not create notifications.",
-            "details":
-                str(e),
-            "notifications":
-                []
-        }), 500
+    })
 
 
 # ============================================================
-# DOCTORS
+# FIND DOCTORS
+# OPENSTREETMAP / OVERPASS
 # ============================================================
 
 @app.route(
-    "/doctors",
-    methods=["GET"]
+    "/doctors"
 )
 def doctors():
 
-    try:
+    lat = request.args.get(
+        "lat"
+    )
 
-        lat = request.args.get(
-            "lat",
-            type=float
-        )
+    lng = request.args.get(
+        "lng"
+    )
 
-        lng = request.args.get(
-            "lng",
-            type=float
-        )
 
-        if lat is None or lng is None:
+    if not lat or not lng:
 
-            return jsonify({
-                "error":
-                    "Latitude and longitude are required."
-            }), 400
+        return jsonify({
 
-        print(
-            f"Doctor search: {lat}, {lng}"
-        )
+            "error":
+                "Latitude and longitude are required.",
 
-        # ----------------------------------------------------
-        # SEARCH WITHIN 5 KM
-        # ----------------------------------------------------
+            "results":
+                []
 
-        query = f"""
-[out:json][timeout:25];
+        }), 400
 
+
+    query = f"""
+[out:json];
 (
-  node["amenity"="doctors"](around:10000,{lat},{lng});
-  node["amenity"="clinic"](around:10000,{lat},{lng});
-  node["amenity"="hospital"](around:10000,{lat},{lng});
-  node["healthcare"="doctor"](around:10000,{lat},{lng});
-  node["healthcare"="clinic"](around:10000,{lat},{lng});
-  way["amenity"="doctors"](around:10000,{lat},{lng});
-  way["amenity"="clinic"](around:10000,{lat},{lng});
-  way["amenity"="hospital"](around:10000,{lat},{lng});
-  way["healthcare"="doctor"](around:10000,{lat},{lng});
-  way["healthcare"="clinic"](around:10000,{lat},{lng});
+  node["amenity"="doctors"](around:2000,{lat},{lng});
+  node["amenity"="clinic"](around:2000,{lat},{lng});
+  node["amenity"="hospital"](around:2000,{lat},{lng});
+  node["healthcare"="doctor"](around:2000,{lat},{lng});
+  node["healthcare"="clinic"](around:2000,{lat},{lng});
 );
-
 out center;
 """
 
+
+    try:
+
         response = requests.post(
+
             "https://overpass-api.de/api/interpreter",
-            data=query,
+
+            data={
+                "data":
+                    query
+            },
+
+            headers={
+                "User-Agent":
+                    "Asha-Womens-Health-App/1.0"
+            },
+
             timeout=30
+
         )
 
-        response.raise_for_status()
+
+        if response.status_code != 200:
+
+            return jsonify({
+
+                "error":
+                    "OpenStreetMap server error",
+
+                "results":
+                    []
+
+            }), 502
+
 
         data = response.json()
 
-        results = []
-
-        for element in data.get(
+        elements = data.get(
             "elements",
             []
-        ):
+        )
+
+
+        results = []
+
+
+        for element in elements:
 
             tags = element.get(
                 "tags",
                 {}
             )
 
-            name = (
-                tags.get("name")
-                or tags.get("operator")
-                or tags.get("brand")
-                or "Unnamed clinic"
-            )
 
-            element_lat = element.get(
-                "lat"
-            )
+            # ------------------------------------------------
+            # GET LOCATION
+            # ------------------------------------------------
 
-            element_lng = element.get(
-                "lon"
-            )
-
-            # Some OSM elements are areas and use center
             if (
-                element_lat is None
-                or element_lng is None
+                "lat" in element
+                and "lon" in element
             ):
 
-                center = element.get(
-                    "center",
-                    {}
-                )
-
-                element_lat = center.get(
+                doctor_lat = element[
                     "lat"
-                )
+                ]
 
-                element_lng = center.get(
+                doctor_lng = element[
                     "lon"
-                )
+                ]
 
-            if (
-                element_lat is None
-                or element_lng is None
-            ):
+            elif "center" in element:
+
+                doctor_lat = element[
+                    "center"
+                ].get("lat")
+
+                doctor_lng = element[
+                    "center"
+                ].get("lon")
+
+            else:
+
                 continue
 
-            results.append({
-                "name": name,
-                "lat": float(element_lat),
-                "lng": float(element_lng),
-            })
 
-        # ----------------------------------------------------
-        # REMOVE DUPLICATES
-        # ----------------------------------------------------
+            if (
+                doctor_lat is None
+                or doctor_lng is None
+            ):
 
-        unique_results = []
+                continue
 
-        seen = set()
 
-        for doctor in results:
+            # ------------------------------------------------
+            # GET NAME
+            # ------------------------------------------------
 
-            key = (
-                doctor["name"],
-                round(doctor["lat"], 5),
-                round(doctor["lng"], 5)
+            name = (
+
+                tags.get("name")
+
+                or tags.get("operator")
+
+                or tags.get("brand")
+
+                or "Unnamed clinic"
+
             )
 
-            if key not in seen:
 
-                seen.add(key)
-                unique_results.append(
-                    doctor
-                )
+            results.append({
 
-        # ----------------------------------------------------
-        # LIMIT RESULTS
-        # ----------------------------------------------------
+                "name":
+                    name,
 
-        unique_results = unique_results[:50]
+                "lat":
+                    doctor_lat,
 
-        print(
-            f"Found {len(unique_results)} doctors/clinics."
-        )
+                "lng":
+                    doctor_lng
+
+            })
+
 
         return jsonify({
-            "results": unique_results
+
+            "results":
+                results
+
         })
 
-    except requests.RequestException as e:
-
-        print(
-            "Overpass error:",
-            e
-        )
-
-        return jsonify({
-            "error":
-                "Could not contact the doctor search service.",
-            "results": []
-        }), 502
 
     except Exception as e:
 
@@ -1087,102 +1055,112 @@ out center;
         )
 
         return jsonify({
+
             "error":
-                "Could not find nearby doctors.",
-            "details":
-                str(e),
-            "results": []
-        }), 500
+                "Could not connect to OpenStreetMap.",
+
+            "results":
+                []
+
+        }), 502
 
 
 # ============================================================
 # GEOCODE ADDRESS
-# ============================================================
-
-# ============================================================
-# GEOCODE ADDRESS
+# OPENSTREETMAP / NOMINATIM
 # ============================================================
 
 @app.route(
-    "/geocode",
-    methods=["GET"]
+    "/geocode"
 )
 def geocode():
 
+    address = request.args.get(
+        "address"
+    )
+
+
+    if not address:
+
+        return jsonify({
+
+            "error":
+                "Address is required"
+
+        }), 400
+
+
     try:
 
-        address = request.args.get(
-            "address",
-            ""
-        ).strip()
-
-        if not address:
-            return jsonify({
-                "error": "Address is required."
-            }), 400
-
-        # Make Indian location searches more specific
-        search_address = address
-
-        if "india" not in address.lower():
-            search_address = f"{address}, Mumbai, Maharashtra, India"
-
-        print(
-            f"Geocoding address: {search_address}"
-        )
-
         response = requests.get(
+
             "https://nominatim.openstreetmap.org/search",
+
             params={
-                "q": search_address,
-                "format": "json",
-                "limit": 1,
-                "countrycodes": "in",
+
+                "q":
+                    address,
+
+                "format":
+                    "json",
+
+                "limit":
+                    1
+
             },
+
             headers={
+
                 "User-Agent":
                     "Asha-Womens-Health-App/1.0"
+
             },
+
             timeout=15
+
         )
 
-        response.raise_for_status()
 
-        results = response.json()
+        if response.status_code != 200:
 
-        print(
-            "Geocoding results:",
-            results
-        )
-
-        if not results:
             return jsonify({
-                "error": "Address not found."
+
+                "error":
+                    "Location service unavailable"
+
+            }), 502
+
+
+        data = response.json()
+
+
+        if not data:
+
+            return jsonify({
+
+                "error":
+                    "Location not found"
+
             }), 404
 
-        result = results[0]
 
         return jsonify({
-            "lat": float(result["lat"]),
-            "lng": float(result["lon"]),
+
+            "lat":
+                float(
+                    data[0]["lat"]
+                ),
+
+            "lng":
+                float(
+                    data[0]["lon"]
+                ),
+
             "display_name":
-                result.get(
-                    "display_name",
-                    search_address
-                )
+                data[0]["display_name"]
+
         })
 
-    except requests.RequestException as e:
-
-        print(
-            "Geocoding error:",
-            e
-        )
-
-        return jsonify({
-            "error":
-                "Could not contact the address search service."
-        }), 502
 
     except Exception as e:
 
@@ -1192,27 +1170,31 @@ def geocode():
         )
 
         return jsonify({
+
             "error":
-                "Could not find the address.",
-            "details":
-                str(e)
-        }), 500
+                "Could not search for this location."
+
+        }), 502
+
 
 # ============================================================
-# RUN
+# START FLASK
 # ============================================================
 
 if __name__ == "__main__":
 
-    port = int(
-        os.getenv(
-            "PORT",
-            5000
-        )
+    app.run(
+
+        host="0.0.0.0",
+
+        port=int(
+            os.environ.get(
+                "PORT",
+                5000
+            )
+        ),
+
+        debug=False
+
     )
 
-    app.run(
-        host="0.0.0.0",
-        port=port,
-        debug=False
-    )

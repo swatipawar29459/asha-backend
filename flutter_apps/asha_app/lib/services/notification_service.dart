@@ -25,11 +25,12 @@ class NotificationService {
     // Initialize timezone database
     tzdata.initializeTimeZones();
 
-    // Use the device's local timezone
+    // Use India Standard Time.
+    // IMPORTANT:
+    // Do not use "IST" or "India Standard Time".
+    // The timezone package uses the IANA name "Asia/Kolkata".
     tz.setLocalLocation(
-      tz.getLocation(
-        DateTime.now().timeZoneName,
-      ),
+      tz.getLocation('Asia/Kolkata'),
     );
 
     // Android initialization
