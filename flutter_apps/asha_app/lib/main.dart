@@ -50,18 +50,9 @@ void main() async {
   );
 
 
-  // ==========================================================
-  // NOTIFICATIONS
-  // ==========================================================
-
-  await NotificationService.init();
-
-
-  // ==========================================================
-  // LOAD LOCAL HEALTH PROFILE
-  // ==========================================================
-
   await HealthProfileStore.load();
+  await NotificationService.init();
+  await NotificationService.scheduleCycleNotification();
 
 
   // ==========================================================

@@ -1,29 +1,23 @@
+
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
-import '../services/api_service.dart';
-import '../services/health_profile_store.dart';
+import '../services/notification_service.dart';
 
-class NotificationScreen
-    extends StatefulWidget {
+class NotificationScreen extends StatefulWidget {
   const NotificationScreen({
     super.key,
   });
 
   @override
-  State<NotificationScreen>
-      createState() =>
-          _NotificationScreenState();
+  State<NotificationScreen> createState() =>
+      _NotificationScreenState();
 }
 
 class _NotificationScreenState
     extends State<NotificationScreen> {
-  List<AshaNotification>
-      notifications = [];
+  List<Map<String, dynamic>> notifications = [];
 
   bool loading = true;
-
-  String? error;
 
   @override
   void initState() {
@@ -31,29 +25,14 @@ class _NotificationScreenState
     _loadNotifications();
   }
 
-  Future<void>
-      _loadNotifications() async {
+  // ============================================================
+  // LOAD LOCAL ASHA NOTIFICATIONS
+  // ============================================================
+
+  Future<void> _loadNotifications() async {
     try {
-      final user =
-          FirebaseAuth.instance
-              .currentUser;
-
-      if (user == null) {
-        setState(() {
-          error =
-              'Please sign in again.';
-          loading = false;
-        });
-        return;
-      }
-
-      await HealthProfileStore.load();
-
       final data =
-          await ApiService
-              .fetchNotifications(
-        userId: user.uid,
-      );
+          await NotificationService.getNotificationHistory();
 
       if (!mounted) return;
 
@@ -62,54 +41,134 @@ class _NotificationScreenState
         loading = false;
       });
     } catch (e) {
-      print(
+      debugPrint(
         'Notification error: $e',
       );
 
       if (!mounted) return;
 
       setState(() {
-        error =
-            'Could not load notifications.';
         loading = false;
       });
     }
   }
 
+  // ============================================================
+  // MARK ALL READ
+  // ============================================================
+
+  Future<void> _markAllRead() async {
+    await NotificationService
+        .markAllCycleNotificationsAsRead();
+
+    await _loadNotifications();
+  }
+
+  // ============================================================
+  // MARK ONE READ
+  // ============================================================
+
+  Future<void> _markOneRead(int index) async {
+    await NotificationService
+        .markNotificationAsRead(index);
+
+    await _loadNotifications();
+  }
+
+  // ============================================================
+  // ICON
+  // ============================================================
+
   IconData _getIcon(
-    String type,
+    String title,
   ) {
-    switch (type) {
-      case 'period':
-        return Icons
-            .water_drop_outlined;
+    final lowerTitle =
+        title.toLowerCase();
 
-      case 'fertile':
-        return Icons
-            .spa_outlined;
+    if (lowerTitle.contains('period') ||
+        lowerTitle.contains('menstrual')) {
+      return Icons.water_drop_outlined;
+    }
 
-      case 'symptom':
-        return Icons
-            .favorite_border;
+    if (lowerTitle.contains('fertile') ||
+        lowerTitle.contains('ovulation')) {
+      return Icons.spa_outlined;
+    }
 
-      case 'cycle':
-        return Icons
-            .calendar_month_outlined;
+    if (lowerTitle.contains('luteal')) {
+      return Icons.nightlight_round;
+    }
 
-      case 'wellness':
-        return Icons
-            .self_improvement_outlined;
+    if (lowerTitle.contains('cycle')) {
+      return Icons.calendar_month_outlined;
+    }
 
-      default:
-        return Icons
-            .notifications_none;
+    return Icons.notifications_none;
+  }
+
+  // ============================================================
+  // TIME FORMAT
+  // ============================================================
+
+  String _formatTime(
+    String? dateString,
+  ) {
+    if (dateString == null) {
+      return '';
+    }
+
+    try {
+      final date =
+          DateTime.parse(dateString);
+
+      final now =
+          DateTime.now();
+
+      final difference =
+          now.difference(date);
+
+      if (difference.inMinutes < 1) {
+        return 'Just now';
+      }
+
+      if (difference.inMinutes < 60) {
+        return '${difference.inMinutes} min ago';
+      }
+
+      if (difference.inHours < 24) {
+        return '${difference.inHours} hr ago';
+      }
+
+      if (difference.inDays == 1) {
+        return 'Yesterday';
+      }
+
+      if (difference.inDays < 7) {
+        return '${difference.inDays} days ago';
+      }
+
+      return '${date.day.toString().padLeft(2, '0')}/'
+          '${date.month.toString().padLeft(2, '0')}/'
+          '${date.year}';
+    } catch (_) {
+      return '';
     }
   }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(
     BuildContext context,
   ) {
+    final unreadCount =
+        notifications.where(
+      (notification) =>
+          notification['read'] != true,
+    ).length;
+
     return Scaffold(
       backgroundColor:
           const Color(0xFFFFF8F3),
@@ -132,17 +191,19 @@ class _NotificationScreenState
         ),
 
         actions: [
-          TextButton(
-            onPressed: () {},
-            child: const Text(
-              'Mark all read',
-              style: TextStyle(
-                color:
-                    Color(0xFFD8754E),
-                fontSize: 13,
+          if (unreadCount > 0)
+            TextButton(
+              onPressed:
+                  _markAllRead,
+              child: const Text(
+                'Mark all read',
+                style: TextStyle(
+                  color:
+                      Color(0xFFD8754E),
+                  fontSize: 13,
+                ),
               ),
             ),
-          ),
         ],
       ),
 
@@ -151,67 +212,87 @@ class _NotificationScreenState
               child:
                   CircularProgressIndicator(),
             )
-          : error != null
-              ? Center(
-                  child: Padding(
+          : notifications.isEmpty
+              ? _buildEmptyState()
+              : RefreshIndicator(
+                  onRefresh:
+                      _loadNotifications,
+
+                  child:
+                      ListView.builder(
                     padding:
                         const EdgeInsets
-                            .all(
+                            .fromLTRB(
+                      16,
+                      12,
+                      16,
                       24,
                     ),
-                    child: Text(
-                      error!,
-                      textAlign:
-                          TextAlign.center,
-                    ),
-                  ),
-                )
-              : notifications.isEmpty
-                  ? _buildEmptyState()
-                  : RefreshIndicator(
-                      onRefresh:
-                          _loadNotifications,
-                      child:
-                          ListView.builder(
-                        padding:
-                            const EdgeInsets
-                                .fromLTRB(
-                          16,
-                          12,
-                          16,
-                          24,
-                        ),
-                        itemCount:
-                            notifications
-                                .length,
-                        itemBuilder:
-                            (context,
-                                index) {
-                          final notification =
-                              notifications[
-                                  index];
 
-                          return _NotificationCard(
-                            icon:
-                                _getIcon(
-                              notification
-                                  .type,
-                            ),
-                            title:
-                                notification
-                                    .title,
-                            message:
-                                notification
-                                    .message,
-                            time:
-                                notification
-                                    .time,
-                          );
+                    itemCount:
+                        notifications.length,
+
+                    itemBuilder:
+                        (context, index) {
+                      final notification =
+                          notifications[
+                              index];
+
+                      final title =
+                          notification[
+                                  'title'] ??
+                              'Asha';
+
+                      final message =
+                          notification[
+                                  'body'] ??
+                              '';
+
+                      final time =
+                          _formatTime(
+                        notification[
+                            'date'],
+                      );
+
+                      final isUnread =
+                          notification[
+                                  'read'] !=
+                              true;
+
+                      return GestureDetector(
+                        onTap: () async {
+                          if (isUnread) {
+                            await _markOneRead(
+                              index,
+                            );
+                          }
                         },
-                      ),
-                    ),
+
+                        child:
+                            _NotificationCard(
+                          icon:
+                              _getIcon(
+                            title,
+                          ),
+                          title:
+                              title,
+                          message:
+                              message,
+                          time:
+                              time,
+                          isUnread:
+                              isUnread,
+                        ),
+                      );
+                    },
+                  ),
+                ),
     );
   }
+
+  // ============================================================
+  // EMPTY STATE
+  // ============================================================
 
   Widget _buildEmptyState() {
     return Center(
@@ -220,14 +301,17 @@ class _NotificationScreenState
             const EdgeInsets.all(
           32,
         ),
+
         child: Column(
           mainAxisAlignment:
               MainAxisAlignment
                   .center,
+
           children: [
             Container(
               height: 80,
               width: 80,
+
               decoration:
                   const BoxDecoration(
                 color:
@@ -235,6 +319,7 @@ class _NotificationScreenState
                 shape:
                     BoxShape.circle,
               ),
+
               child: const Icon(
                 Icons
                     .notifications_none_rounded,
@@ -243,9 +328,11 @@ class _NotificationScreenState
                     Color(0xFFD8754E),
               ),
             ),
+
             const SizedBox(
               height: 20,
             ),
+
             const Text(
               'No notifications yet',
               style: TextStyle(
@@ -256,13 +343,16 @@ class _NotificationScreenState
                     FontWeight.w600,
               ),
             ),
+
             const SizedBox(
               height: 8,
             ),
+
             const Text(
               'Asha will keep you updated about your cycle, fertile window, and wellness reminders.',
               textAlign:
                   TextAlign.center,
+
               style: TextStyle(
                 color:
                     Color(0xFF806D65),
@@ -277,18 +367,24 @@ class _NotificationScreenState
   }
 }
 
+// ============================================================
+// NOTIFICATION CARD
+// ============================================================
+
 class _NotificationCard
     extends StatelessWidget {
   final IconData icon;
   final String title;
   final String message;
   final String time;
+  final bool isUnread;
 
   const _NotificationCard({
     required this.icon,
     required this.title,
     required this.message,
     required this.time,
+    required this.isUnread,
   });
 
   @override
@@ -300,26 +396,50 @@ class _NotificationCard
           const EdgeInsets.only(
         bottom: 12,
       ),
+
       padding:
           const EdgeInsets.all(
         16,
       ),
+
       decoration:
           BoxDecoration(
-        color:
-            const Color(0xFFFFE9DC),
+        color: isUnread
+            ? const Color(
+                0xFFFFE9DC,
+              )
+            : const Color(
+                0xFFFFF1EA,
+              ),
+
         borderRadius:
             BorderRadius.circular(
           18,
         ),
+
+        border: isUnread
+            ? Border.all(
+                color: const Color(
+                  0xFFF2C7B5,
+                ),
+              )
+            : null,
       ),
+
       child: Row(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
+
         children: [
+          // ----------------------------------------------------
+          // ICON
+          // ----------------------------------------------------
+
           Container(
             height: 46,
             width: 46,
+
             decoration:
                 const BoxDecoration(
               color:
@@ -327,6 +447,7 @@ class _NotificationCard
               shape:
                   BoxShape.circle,
             ),
+
             child: Icon(
               icon,
               color:
@@ -339,36 +460,72 @@ class _NotificationCard
             width: 14,
           ),
 
+          // ----------------------------------------------------
+          // CONTENT
+          // ----------------------------------------------------
+
           Expanded(
             child: Column(
               crossAxisAlignment:
                   CrossAxisAlignment
                       .start,
+
               children: [
                 Row(
                   crossAxisAlignment:
                       CrossAxisAlignment
                           .start,
+
                   children: [
                     Expanded(
-                      child: Text(
-                        title,
-                        style:
-                            const TextStyle(
-                          color:
-                              Color(
-                            0xFF513C35,
+                      child: Row(
+                        children: [
+                          if (isUnread)
+                            Container(
+                              width: 7,
+                              height: 7,
+                              margin:
+                                  const EdgeInsets
+                                      .only(
+                                right: 7,
+                                top: 5,
+                              ),
+                              decoration:
+                                  const BoxDecoration(
+                                color:
+                                    Color(
+                                  0xFFD8754E,
+                                ),
+                                shape:
+                                    BoxShape
+                                        .circle,
+                              ),
+                            ),
+
+                          Expanded(
+                            child: Text(
+                              title,
+                              style:
+                                  const TextStyle(
+                                color:
+                                    Color(
+                                  0xFF513C35,
+                                ),
+                                fontSize: 15,
+                                fontWeight:
+                                    FontWeight
+                                        .w600,
+                              ),
+                            ),
                           ),
-                          fontSize: 15,
-                          fontWeight:
-                              FontWeight
-                                  .w600,
-                        ),
+                        ],
                       ),
                     ),
+
                     const SizedBox(
                       width: 8,
                     ),
+
                     Text(
                       time,
                       style:
