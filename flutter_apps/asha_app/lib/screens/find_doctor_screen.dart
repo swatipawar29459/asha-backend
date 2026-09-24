@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -31,9 +30,9 @@ class _FindDoctorScreenState
 
   String? error;
 
-  // ==================================================
+  // ============================================================
   // CURRENT LOCATION
-  // ==================================================
+  // ============================================================
 
   Future<void> _useCurrentLocation() async {
     setState(() {
@@ -43,7 +42,6 @@ class _FindDoctorScreenState
     });
 
     try {
-      // Check whether phone location/GPS is ON
       final serviceEnabled =
           await Geolocator.isLocationServiceEnabled();
 
@@ -53,7 +51,6 @@ class _FindDoctorScreenState
         );
       }
 
-      // Check permission
       LocationPermission permission =
           await Geolocator.checkPermission();
 
@@ -74,10 +71,6 @@ class _FindDoctorScreenState
         );
       }
 
-      // Get phone's current GPS location
-      // No locationSettings parameter because
-      // your installed Geolocator version does not
-      // accept it here.
       final position =
           await Geolocator.getCurrentPosition();
 
@@ -92,7 +85,6 @@ class _FindDoctorScreenState
         position.longitude,
       );
 
-      // Send latitude/longitude to Render Flask backend
       final doctors =
           await ApiService.findDoctors(
         position.latitude,
@@ -108,7 +100,7 @@ class _FindDoctorScreenState
 
         if (doctors.isEmpty) {
           error =
-              'No nearby doctors or clinics were found.';
+              'No nearby doctors, clinics or hospitals were found.';
         }
       });
     } catch (e) {
@@ -131,9 +123,9 @@ class _FindDoctorScreenState
     }
   }
 
-  // ==================================================
+  // ============================================================
   // MANUAL ADDRESS SEARCH
-  // ==================================================
+  // ============================================================
 
   Future<void> _searchByAddress() async {
     final address =
@@ -154,7 +146,6 @@ class _FindDoctorScreenState
     });
 
     try {
-      // Send address to Render Flask /geocode
       final location =
           await ApiService.geocodeAddress(
         address,
@@ -169,7 +160,6 @@ class _FindDoctorScreenState
       final searchedLocation =
           LatLng(lat, lng);
 
-      // Search doctors around searched location
       final doctors =
           await ApiService.findDoctors(
         lat,
@@ -188,7 +178,7 @@ class _FindDoctorScreenState
 
         if (doctors.isEmpty) {
           error =
-              'Location found, but no nearby doctors or clinics were found.';
+              'Location found, but no nearby doctors, clinics or hospitals were found.';
         }
       });
     } catch (e) {
@@ -207,9 +197,9 @@ class _FindDoctorScreenState
     }
   }
 
-  // ==================================================
+  // ============================================================
   // MAP
-  // ==================================================
+  // ============================================================
 
   Widget _buildMap() {
     if (selectedLocation == null) {
@@ -217,8 +207,8 @@ class _FindDoctorScreenState
         height: 280,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: AshaColors.peach
-              .withOpacity(0.25),
+          color:
+              AshaColors.peach.withOpacity(0.25),
           borderRadius:
               BorderRadius.circular(20),
         ),
@@ -248,7 +238,6 @@ class _FindDoctorScreenState
             initialZoom: 14,
           ),
           children: [
-            // OpenStreetMap
             TileLayer(
               urlTemplate:
                   'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -256,7 +245,6 @@ class _FindDoctorScreenState
                   'com.example.asha_app',
             ),
 
-            // Location + doctor markers
             MarkerLayer(
               markers: [
                 // User/search location
@@ -272,7 +260,7 @@ class _FindDoctorScreenState
                   ),
                 ),
 
-                // Doctor locations
+                // Doctors / clinics / hospitals
                 ...results.map(
                   (doctor) => Marker(
                     point: LatLng(
@@ -290,19 +278,44 @@ class _FindDoctorScreenState
                 ),
               ],
             ),
+
+            // OpenStreetMap attribution
+            const RichAttributionWidget(
+              attributions: [
+                TextSourceAttribution(
+                  'OpenStreetMap contributors',
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  // ==================================================
-  // DOCTOR CARD
-  // ==================================================
+  // ============================================================
+  // DOCTOR / CLINIC / HOSPITAL CARD
+  // ============================================================
 
   Widget _doctorCard(
     Doctor doctor,
   ) {
+    IconData icon;
+
+    if (doctor.type == 'Hospital') {
+      icon =
+          Icons.local_hospital_rounded;
+    } else if (doctor.type == 'Clinic') {
+      icon =
+          Icons.medical_services_rounded;
+    } else if (doctor.type == 'Doctor') {
+      icon =
+          Icons.person_rounded;
+    } else {
+      icon =
+          Icons.health_and_safety_rounded;
+    }
+
     return AshaCard(
       child: Row(
         children: [
@@ -310,14 +323,13 @@ class _FindDoctorScreenState
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color:
-                  AshaColors.peach,
+              color: AshaColors.peach,
               borderRadius:
                   BorderRadius.circular(14),
             ),
-            child: const Icon(
-              Icons
-                  .medical_services_rounded,
+            child: Icon(
+              icon,
+              color: AshaColors.coral,
             ),
           ),
 
@@ -326,14 +338,33 @@ class _FindDoctorScreenState
           ),
 
           Expanded(
-            child: Text(
-              doctor.name,
-              style:
-                  const TextStyle(
-                fontWeight:
-                    FontWeight.bold,
-                fontSize: 13,
-              ),
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  doctor.name,
+                  style:
+                      const TextStyle(
+                    fontWeight:
+                        FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 4,
+                ),
+
+                Text(
+                  doctor.type,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color:
+                        AshaColors.slate,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -341,9 +372,9 @@ class _FindDoctorScreenState
     );
   }
 
-  // ==================================================
+  // ============================================================
   // UI
-  // ==================================================
+  // ============================================================
 
   @override
   Widget build(
@@ -370,7 +401,7 @@ class _FindDoctorScreenState
 
             children: [
               const Text(
-                'Find nearby doctors and clinics',
+                'Find nearby doctors, clinics and hospitals',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight:
@@ -530,7 +561,7 @@ class _FindDoctorScreenState
               ),
 
               const Text(
-                'Nearby doctors',
+                'Nearby medical facilities',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight:
@@ -543,20 +574,19 @@ class _FindDoctorScreenState
               ),
 
               // ==================================================
-              // DOCTOR LIST
+              // RESULTS
               // ==================================================
 
               Expanded(
                 child: results.isEmpty
                     ? const Center(
                         child: Text(
-                          'No nearby doctors found.',
+                          'No nearby medical facilities found.',
                         ),
                       )
                     : ListView.builder(
                         itemCount:
                             results.length,
-
                         itemBuilder:
                             (_, index) {
                           return _doctorCard(
@@ -572,9 +602,9 @@ class _FindDoctorScreenState
     );
   }
 
-  // ==================================================
+  // ============================================================
   // DISPOSE
-  // ==================================================
+  // ============================================================
 
   @override
   void dispose() {

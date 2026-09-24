@@ -649,6 +649,10 @@ def log_symptoms(user_id):
 # AI CHAT
 # ============================================================
 
+# ============================================================
+# AI CHAT
+# ============================================================
+
 @app.route(
     "/chat",
     methods=["POST"]
@@ -660,119 +664,69 @@ def chat():
         data = request.get_json()
 
         if not data:
-
             return jsonify({
-                "error":
-                    "Request body is required"
+                "error": "Request body is required"
             }), 400
 
+        user_message = str(
+            data.get("message", "")
+        ).strip()
 
-        if "message" not in data:
-
+        if not user_message:
             return jsonify({
-                "error":
-                    "Message is required"
+                "error": "Message is required"
             }), 400
-
 
         if client is None:
-
             return jsonify({
-                "error":
-                    "OpenRouter API key is not configured"
+                "error": "OpenRouter API key is not configured"
             }), 500
 
-
-        user_message = data["message"]
-
-        history = data.get(
-            "history",
-            []
-        )
-
+        history = data.get("history", [])
 
         messages = [
-
             {
-                "role":
-                    "system",
-
-                "content":
-                    SYSTEM_PROMPT
+                "role": "system",
+                "content": SYSTEM_PROMPT
             }
-
         ]
 
-
-        # ----------------------------------------------------
-        # CONVERSATION HISTORY
-        # ----------------------------------------------------
-
+        # Add previous conversation messages
         if isinstance(history, list):
 
             for message in history:
 
-                if not isinstance(
-                    message,
-                    dict
-                ):
+                if not isinstance(message, dict):
                     continue
 
-                role = message.get(
-                    "role"
-                )
+                role = message.get("role")
+                content = message.get("content")
 
-                content = message.get(
-                    "content"
-                )
-
-                if role not in [
-                    "user",
-                    "assistant"
-                ]:
+                if role not in ["user", "assistant"]:
                     continue
 
                 if not content:
                     continue
 
                 messages.append({
-
-                    "role":
-                        role,
-
-                    "content":
-                        str(content)
-
+                    "role": role,
+                    "content": str(content)
                 })
 
-
-        # ----------------------------------------------------
-        # CURRENT USER MESSAGE
-        # ----------------------------------------------------
-
+        # Add current user message
         messages.append({
-
-            "role":
-                "user",
-
-            "content":
-                str(user_message)
-
+            "role": "user",
+            "content": user_message
         })
 
-
-        # ----------------------------------------------------
-        # OPENROUTER REQUEST
-        # ----------------------------------------------------
+        print("Asha user message:", user_message)
 
         response = client.chat.completions.create(
-
-            model="openrouter/free",
-
-            messages=messages
-
+            model="google/gemma-4-26b-a4b-it:free",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=300
         )
-
 
         reply = (
             response
@@ -781,32 +735,29 @@ def chat():
             .content
         )
 
+        if not reply:
+            reply = (
+                "Sorry, I couldn't generate a response "
+                "right now. Please try again."
+            )
+
+        print("Asha AI reply:", reply)
 
         return jsonify({
-
-            "reply":
-                reply
-
+            "reply": str(reply).strip()
         })
-
 
     except Exception as e:
 
         print(
             "OpenRouter error:",
-            e
+            repr(e)
         )
 
         return jsonify({
-
-            "error":
-                "Could not reach Asha AI",
-
-            "details":
-                str(e)
-
+            "error": "Could not reach Asha AI",
+            "details": str(e)
         }), 500
-
 
 # ============================================================
 # NOTIFICATIONS
@@ -871,198 +822,237 @@ def notifications(user_id):
 
 
 # ============================================================
-# FIND DOCTORS
-# OPENSTREETMAP / OVERPASS
+# FIND DOCTORS / CLINICS / HOSPITALS
 # ============================================================
 
-@app.route(
-    "/doctors"
-)
+@app.route("/doctors")
 def doctors():
 
-    lat = request.args.get(
-        "lat"
-    )
-
-    lng = request.args.get(
-        "lng"
-    )
-
+    lat = request.args.get("lat")
+    lng = request.args.get("lng")
 
     if not lat or not lng:
-
         return jsonify({
-
-            "error":
-                "Latitude and longitude are required.",
-
-            "results":
-                []
-
+            "error": "Latitude and longitude are required.",
+            "results": []
         }), 400
 
-
+    # Search approximately 3 km around the selected location.
     query = f"""
-[out:json];
+[out:json][timeout:20];
+
 (
-  node["amenity"="doctors"](around:2000,{lat},{lng});
-  node["amenity"="clinic"](around:2000,{lat},{lng});
-  node["amenity"="hospital"](around:2000,{lat},{lng});
-  node["healthcare"="doctor"](around:2000,{lat},{lng});
-  node["healthcare"="clinic"](around:2000,{lat},{lng});
+  nwr["amenity"="doctors"](around:3000,{lat},{lng});
+  nwr["amenity"="clinic"](around:3000,{lat},{lng});
+  nwr["amenity"="hospital"](around:3000,{lat},{lng});
+
+  nwr["healthcare"="doctor"](around:3000,{lat},{lng});
+  nwr["healthcare"="clinic"](around:3000,{lat},{lng});
+  nwr["healthcare"="hospital"](around:3000,{lat},{lng});
 );
+
 out center;
 """
 
+    # Multiple public Overpass servers.
+    overpass_servers = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    ]
 
-    try:
+    last_error = None
 
-        response = requests.post(
+    for server in overpass_servers:
 
-            "https://overpass-api.de/api/interpreter",
+        try:
 
-            data={
-                "data":
-                    query
-            },
+            print(
+                "Trying Overpass server:",
+                server
+            )
 
-            headers={
-                "User-Agent":
-                    "Asha-Womens-Health-App/1.0"
-            },
+            response = requests.post(
+                server,
+                data={"data": query},
+                headers={
+                    "User-Agent":
+                        "Asha-Womens-Health-App/1.0"
+                },
+                timeout=25
+            )
 
-            timeout=30
+            print(
+                "Overpass response:",
+                response.status_code
+            )
 
-        )
+            if response.status_code != 200:
+                last_error = (
+                    f"Server returned "
+                    f"{response.status_code}"
+                )
+                continue
 
+            data = response.json()
 
-        if response.status_code != 200:
+            elements = data.get(
+                "elements",
+                []
+            )
+
+            results = []
+
+            for element in elements:
+
+                tags = element.get(
+                    "tags",
+                    {}
+                )
+
+                # ------------------------------------------------
+                # GET LOCATION
+                # ------------------------------------------------
+
+                if (
+                    "lat" in element
+                    and "lon" in element
+                ):
+                    place_lat = element["lat"]
+                    place_lng = element["lon"]
+
+                elif "center" in element:
+
+                    center = element.get(
+                        "center",
+                        {}
+                    )
+
+                    place_lat = center.get(
+                        "lat"
+                    )
+
+                    place_lng = center.get(
+                        "lon"
+                    )
+
+                else:
+                    continue
+
+                if (
+                    place_lat is None
+                    or place_lng is None
+                ):
+                    continue
+
+                # ------------------------------------------------
+                # GET NAME
+                # ------------------------------------------------
+
+                name = (
+                    tags.get("name")
+                    or tags.get("official_name")
+                    or tags.get("operator")
+                    or tags.get("brand")
+                    or "Unnamed medical facility"
+                )
+
+                # ------------------------------------------------
+                # DETERMINE TYPE
+                # ------------------------------------------------
+
+                healthcare_type = (
+                    tags.get("healthcare")
+                    or ""
+                ).lower()
+
+                amenity_type = (
+                    tags.get("amenity")
+                    or ""
+                ).lower()
+
+                if (
+                    healthcare_type == "hospital"
+                    or amenity_type == "hospital"
+                ):
+                    place_type = "Hospital"
+
+                elif (
+                    healthcare_type == "clinic"
+                    or amenity_type == "clinic"
+                ):
+                    place_type = "Clinic"
+
+                elif (
+                    healthcare_type == "doctor"
+                    or amenity_type == "doctors"
+                ):
+                    place_type = "Doctor"
+
+                else:
+                    place_type = "Medical facility"
+
+                results.append({
+                    "name": name,
+                    "lat": place_lat,
+                    "lng": place_lng,
+                    "type": place_type
+                })
+
+            # ------------------------------------------------
+            # REMOVE DUPLICATES
+            # ------------------------------------------------
+
+            unique_results = []
+            seen = set()
+
+            for place in results:
+
+                key = (
+                    place["name"].lower(),
+                    round(place["lat"], 5),
+                    round(place["lng"], 5)
+                )
+
+                if key in seen:
+                    continue
+
+                seen.add(key)
+                unique_results.append(place)
+
+            # Limit results so the app stays clean.
+            unique_results = unique_results[:50]
+
+            print(
+                "Medical facilities found:",
+                len(unique_results)
+            )
 
             return jsonify({
-
-                "error":
-                    "OpenStreetMap server error",
-
-                "results":
-                    []
-
-            }), 502
-
-
-        data = response.json()
-
-        elements = data.get(
-            "elements",
-            []
-        )
-
-
-        results = []
-
-
-        for element in elements:
-
-            tags = element.get(
-                "tags",
-                {}
-            )
-
-
-            # ------------------------------------------------
-            # GET LOCATION
-            # ------------------------------------------------
-
-            if (
-                "lat" in element
-                and "lon" in element
-            ):
-
-                doctor_lat = element[
-                    "lat"
-                ]
-
-                doctor_lng = element[
-                    "lon"
-                ]
-
-            elif "center" in element:
-
-                doctor_lat = element[
-                    "center"
-                ].get("lat")
-
-                doctor_lng = element[
-                    "center"
-                ].get("lon")
-
-            else:
-
-                continue
-
-
-            if (
-                doctor_lat is None
-                or doctor_lng is None
-            ):
-
-                continue
-
-
-            # ------------------------------------------------
-            # GET NAME
-            # ------------------------------------------------
-
-            name = (
-
-                tags.get("name")
-
-                or tags.get("operator")
-
-                or tags.get("brand")
-
-                or "Unnamed clinic"
-
-            )
-
-
-            results.append({
-
-                "name":
-                    name,
-
-                "lat":
-                    doctor_lat,
-
-                "lng":
-                    doctor_lng
-
+                "results": unique_results
             })
 
+        except Exception as e:
 
-        return jsonify({
+            print(
+                "Overpass server failed:",
+                server,
+                repr(e)
+            )
 
-            "results":
-                results
+            last_error = str(e)
 
-        })
+    # All servers failed.
+    print(
+        "All Overpass servers failed:",
+        last_error
+    )
 
-
-    except Exception as e:
-
-        print(
-            "Doctor search error:",
-            e
-        )
-
-        return jsonify({
-
-            "error":
-                "Could not connect to OpenStreetMap.",
-
-            "results":
-                []
-
-        }), 502
+    return jsonify({
+        "error":
+            "Could not connect to medical search service.",
+        "results": []
+    }), 502
 
 
 # ============================================================

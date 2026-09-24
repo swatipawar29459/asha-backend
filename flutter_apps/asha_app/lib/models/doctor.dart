@@ -2,10 +2,23 @@ class Doctor {
   final String name;
   final double lat;
   final double lng;
-  Doctor({required this.name, required this.lat, required this.lng});
-  factory Doctor.fromJson(Map<String, dynamic> j) => Doctor(
-        name: j['name'] ?? 'Unnamed clinic',
-        lat: (j['lat'] as num).toDouble(),
-        lng: (j['lng'] as num).toDouble(),
-      );
+  final String type;
+
+  Doctor({
+    required this.name,
+    required this.lat,
+    required this.lng,
+    required this.type,
+  });
+
+  factory Doctor.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    return Doctor(
+      name: json['name']?.toString() ?? 'Unnamed medical facility',
+      lat: (json['lat'] as num).toDouble(),
+      lng: (json['lng'] as num).toDouble(),
+      type: json['type']?.toString() ?? 'Medical facility',
+    );
+  }
 }
