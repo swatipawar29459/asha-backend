@@ -48,8 +48,7 @@ class ApiService {
   static Future<Prediction> fetchPrediction({
     required String userId,
   }) async {
-    final profile =
-        HealthProfileStore.toJson();
+    final profile = HealthProfileStore.toJson();
 
     print('Firebase UID: $userId');
     print('Sending profile: $profile');
@@ -112,8 +111,7 @@ class ApiService {
 
   static Future<String> sendChatMessage(
     String message, {
-    List<Map<String, String>> history =
-        const [],
+    List<Map<String, String>> history = const [],
   }) async {
     final response = await http.post(
       Uri.parse(
@@ -134,8 +132,7 @@ class ApiService {
       );
     }
 
-    final data =
-        jsonDecode(response.body);
+    final data = jsonDecode(response.body);
 
     return data['reply']?.toString() ??
         'Sorry, I could not respond.';
@@ -149,8 +146,7 @@ class ApiService {
       fetchNotifications({
     required String userId,
   }) async {
-    final profile =
-        HealthProfileStore.toJson();
+    final profile = HealthProfileStore.toJson();
 
     final response = await http.post(
       Uri.parse(
@@ -174,16 +170,13 @@ class ApiService {
       );
     }
 
-    final body =
-        jsonDecode(response.body);
+    final body = jsonDecode(response.body);
 
-    final List list =
-        body['notifications'] ?? [];
+    final List list = body['notifications'] ?? [];
 
     return list
         .map(
-          (item) =>
-              AshaNotification.fromJson(
+          (item) => AshaNotification.fromJson(
             Map<String, dynamic>.from(item),
           ),
         )
@@ -195,43 +188,43 @@ class ApiService {
   // ==================================================
 
   static Future<List<Doctor>> findDoctors(
-    double lat,
-    double lng,
-  ) async {
-    final response = await http.get(
-      Uri.parse(
-        '$baseUrl/doctors'
-        '?lat=$lat&lng=$lng',
-      ),
+  double lat,
+  double lng, {
+  required String type,
+}) async {
+  final response = await http.get(
+    Uri.parse(
+      '$baseUrl/doctors'
+      '?lat=$lat'
+      '&lng=$lng'
+      '&type=${Uri.encodeQueryComponent(type)}',
+    ),
+  );
+
+  print(
+    'Doctors: '
+    '${response.statusCode} '
+    '${response.body}',
+  );
+
+  if (response.statusCode != 200) {
+    throw Exception(
+      'Could not find nearby healthcare providers',
     );
-
-    print(
-      'Doctors: '
-      '${response.statusCode} '
-      '${response.body}',
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Could not find nearby doctors',
-      );
-    }
-
-    final body =
-        jsonDecode(response.body);
-
-    final List results =
-        body['results'] ?? [];
-
-    return results
-        .map(
-          (item) =>
-              Doctor.fromJson(
-            Map<String, dynamic>.from(item),
-          ),
-        )
-        .toList();
   }
+
+  final body = jsonDecode(response.body);
+
+  final List results = body['results'] ?? [];
+
+  return results
+      .map(
+        (item) => Doctor.fromJson(
+          Map<String, dynamic>.from(item),
+        ),
+      )
+      .toList();
+}
 
   // ==================================================
   // GEOCODE

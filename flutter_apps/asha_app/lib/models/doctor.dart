@@ -1,24 +1,44 @@
 class Doctor {
   final String name;
+  final String type;
+  final String address;
+  final String? phone;
+  final String? website;
+  final String? openingHours;
   final double lat;
   final double lng;
-  final String type;
 
   Doctor({
     required this.name,
+    required this.type,
+    required this.address,
     required this.lat,
     required this.lng,
-    required this.type,
+    this.phone,
+    this.website,
+    this.openingHours,
   });
 
-  factory Doctor.fromJson(
-    Map<String, dynamic> json,
-  ) {
+  factory Doctor.fromJson(Map<String, dynamic> json) {
     return Doctor(
-      name: json['name']?.toString() ?? 'Unnamed medical facility',
+      name: json['name']?.toString() ?? 'Unnamed healthcare provider',
+      type: json['type']?.toString() ?? 'Healthcare',
+      address: json['address']?.toString() ?? '',
+      phone: _nullable(json['phone']),
+      website: _nullable(json['website']),
+      openingHours: _nullable(json['opening_hours']),
       lat: (json['lat'] as num).toDouble(),
       lng: (json['lng'] as num).toDouble(),
-      type: json['type']?.toString() ?? 'Medical facility',
     );
+  }
+
+  static String? _nullable(dynamic value) {
+    final text = value?.toString().trim();
+
+    if (text == null || text.isEmpty) {
+      return null;
+    }
+
+    return text;
   }
 }

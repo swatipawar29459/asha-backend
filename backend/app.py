@@ -822,238 +822,346 @@ def notifications(user_id):
 
 
 # ============================================================
-# FIND DOCTORS / CLINICS / HOSPITALS
+# FIND HEALTHCARE
+# OPENSTREETMAP / OVERPASS
 # ============================================================
 
-@app.route("/doctors")
+@app.route(
+    "/doctors"
+)
 def doctors():
 
-    lat = request.args.get("lat")
-    lng = request.args.get("lng")
+    lat = request.args.get(
+        "lat"
+    )
+
+    lng = request.args.get(
+        "lng"
+    )
+
+    selected_type = (
+        request.args.get(
+            "type",
+            "doctor"
+        )
+        .lower()
+        .strip()
+    )
 
     if not lat or not lng:
+
         return jsonify({
-            "error": "Latitude and longitude are required.",
-            "results": []
+            "error":
+                "Latitude and longitude are required.",
+            "results":
+                []
         }), 400
 
-    # Search approximately 3 km around the selected location.
-    query = f"""
-[out:json][timeout:20];
+    # --------------------------------------------------------
+    # SEARCH TYPE
+    # --------------------------------------------------------
 
+    if selected_type == "hospital":
+
+        query = f"""
+[out:json];
 (
-  nwr["amenity"="doctors"](around:3000,{lat},{lng});
-  nwr["amenity"="clinic"](around:3000,{lat},{lng});
-  nwr["amenity"="hospital"](around:3000,{lat},{lng});
-
-  nwr["healthcare"="doctor"](around:3000,{lat},{lng});
-  nwr["healthcare"="clinic"](around:3000,{lat},{lng});
-  nwr["healthcare"="hospital"](around:3000,{lat},{lng});
+  node["amenity"="hospital"](around:5000,{lat},{lng});
+  way["amenity"="hospital"](around:5000,{lat},{lng});
+  relation["amenity"="hospital"](around:5000,{lat},{lng});
 );
-
 out center;
 """
 
-    # Multiple public Overpass servers.
-    overpass_servers = [
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.private.coffee/api/interpreter",
-        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-    ]
+    elif selected_type == "clinic":
 
-    last_error = None
+        query = f"""
+[out:json];
+(
+  node["amenity"="clinic"](around:5000,{lat},{lng});
+  way["amenity"="clinic"](around:5000,{lat},{lng});
+  relation["amenity"="clinic"](around:5000,{lat},{lng});
 
-    for server in overpass_servers:
+  node["healthcare"="clinic"](around:5000,{lat},{lng});
+  way["healthcare"="clinic"](around:5000,{lat},{lng});
+  relation["healthcare"="clinic"](around:5000,{lat},{lng});
+);
+out center;
+"""
 
-        try:
+    else:
 
-            print(
-                "Trying Overpass server:",
-                server
-            )
+        query = f"""
+[out:json];
+(
+  node["amenity"="doctors"](around:5000,{lat},{lng});
+  way["amenity"="doctors"](around:5000,{lat},{lng});
+  relation["amenity"="doctors"](around:5000,{lat},{lng});
 
-            response = requests.post(
-                server,
-                data={"data": query},
-                headers={
-                    "User-Agent":
-                        "Asha-Womens-Health-App/1.0"
-                },
-                timeout=25
-            )
+  node["healthcare"="doctor"](around:5000,{lat},{lng});
+  way["healthcare"="doctor"](around:5000,{lat},{lng});
+  relation["healthcare"="doctor"](around:5000,{lat},{lng});
+);
+out center;
+"""
 
-            print(
-                "Overpass response:",
-                response.status_code
-            )
+    try:
 
-            if response.status_code != 200:
-                last_error = (
-                    f"Server returned "
-                    f"{response.status_code}"
-                )
-                continue
+        response = requests.post(
+            "https://overpass-api.de/api/interpreter",
+            data={
+                "data": query
+            },
+            headers={
+                "User-Agent":
+                    "Asha-Womens-Health-App/1.0"
+            },
+            timeout=30
+        )
 
-            data = response.json()
-
-            elements = data.get(
-                "elements",
-                []
-            )
-
-            results = []
-
-            for element in elements:
-
-                tags = element.get(
-                    "tags",
-                    {}
-                )
-
-                # ------------------------------------------------
-                # GET LOCATION
-                # ------------------------------------------------
-
-                if (
-                    "lat" in element
-                    and "lon" in element
-                ):
-                    place_lat = element["lat"]
-                    place_lng = element["lon"]
-
-                elif "center" in element:
-
-                    center = element.get(
-                        "center",
-                        {}
-                    )
-
-                    place_lat = center.get(
-                        "lat"
-                    )
-
-                    place_lng = center.get(
-                        "lon"
-                    )
-
-                else:
-                    continue
-
-                if (
-                    place_lat is None
-                    or place_lng is None
-                ):
-                    continue
-
-                # ------------------------------------------------
-                # GET NAME
-                # ------------------------------------------------
-
-                name = (
-                    tags.get("name")
-                    or tags.get("official_name")
-                    or tags.get("operator")
-                    or tags.get("brand")
-                    or "Unnamed medical facility"
-                )
-
-                # ------------------------------------------------
-                # DETERMINE TYPE
-                # ------------------------------------------------
-
-                healthcare_type = (
-                    tags.get("healthcare")
-                    or ""
-                ).lower()
-
-                amenity_type = (
-                    tags.get("amenity")
-                    or ""
-                ).lower()
-
-                if (
-                    healthcare_type == "hospital"
-                    or amenity_type == "hospital"
-                ):
-                    place_type = "Hospital"
-
-                elif (
-                    healthcare_type == "clinic"
-                    or amenity_type == "clinic"
-                ):
-                    place_type = "Clinic"
-
-                elif (
-                    healthcare_type == "doctor"
-                    or amenity_type == "doctors"
-                ):
-                    place_type = "Doctor"
-
-                else:
-                    place_type = "Medical facility"
-
-                results.append({
-                    "name": name,
-                    "lat": place_lat,
-                    "lng": place_lng,
-                    "type": place_type
-                })
-
-            # ------------------------------------------------
-            # REMOVE DUPLICATES
-            # ------------------------------------------------
-
-            unique_results = []
-            seen = set()
-
-            for place in results:
-
-                key = (
-                    place["name"].lower(),
-                    round(place["lat"], 5),
-                    round(place["lng"], 5)
-                )
-
-                if key in seen:
-                    continue
-
-                seen.add(key)
-                unique_results.append(place)
-
-            # Limit results so the app stays clean.
-            unique_results = unique_results[:50]
-
-            print(
-                "Medical facilities found:",
-                len(unique_results)
-            )
+        if response.status_code != 200:
 
             return jsonify({
-                "results": unique_results
-            })
+                "error":
+                    "OpenStreetMap server error",
+                "results":
+                    []
+            }), 502
 
-        except Exception as e:
+        data = response.json()
 
-            print(
-                "Overpass server failed:",
-                server,
-                repr(e)
+        elements = data.get(
+            "elements",
+            []
+        )
+
+        results = []
+
+        for element in elements:
+
+            tags = element.get(
+                "tags",
+                {}
             )
 
-            last_error = str(e)
+            # ------------------------------------------------
+            # LOCATION
+            # ------------------------------------------------
 
-    # All servers failed.
-    print(
-        "All Overpass servers failed:",
-        last_error
-    )
+            if (
+                "lat" in element
+                and "lon" in element
+            ):
 
-    return jsonify({
-        "error":
-            "Could not connect to medical search service.",
-        "results": []
-    }), 502
+                place_lat = element["lat"]
+                place_lng = element["lon"]
 
+            elif "center" in element:
+
+                center = element["center"]
+
+                place_lat = center.get(
+                    "lat"
+                )
+
+                place_lng = center.get(
+                    "lon"
+                )
+
+            else:
+                continue
+
+            if (
+                place_lat is None
+                or place_lng is None
+            ):
+                continue
+
+            # ------------------------------------------------
+            # NAME
+            # ------------------------------------------------
+
+            name = (
+                tags.get("name")
+                or tags.get("official_name")
+                or tags.get("operator")
+                or tags.get("brand")
+                or "Unnamed healthcare provider"
+            )
+
+            # ------------------------------------------------
+            # ADDRESS
+            # ------------------------------------------------
+
+            address_parts = []
+
+            for key in [
+                "addr:housenumber",
+                "addr:street",
+                "addr:suburb",
+                "addr:city",
+                "addr:postcode"
+            ]:
+
+                value = tags.get(key)
+
+                if value:
+                    address_parts.append(
+                        value
+                    )
+
+            address = ", ".join(
+                address_parts
+            )
+
+            # Some listings may have a general
+            # address field instead.
+            if not address:
+
+                address = (
+                    tags.get("addr:full")
+                    or tags.get("description")
+                    or ""
+                )
+
+            # ------------------------------------------------
+            # PHONE
+            # ------------------------------------------------
+
+            phone = (
+                tags.get("contact:phone")
+                or tags.get("phone")
+                or tags.get("telephone")
+            )
+
+            # ------------------------------------------------
+            # WEBSITE
+            # ------------------------------------------------
+
+            website = (
+                tags.get("contact:website")
+                or tags.get("website")
+                or tags.get("url")
+            )
+
+            # ------------------------------------------------
+            # OPENING HOURS
+            # ------------------------------------------------
+
+            opening_hours = tags.get(
+                "opening_hours"
+            )
+
+            # ------------------------------------------------
+            # CLEAN WEBSITE
+            # ------------------------------------------------
+
+            if website:
+
+                website = website.strip()
+
+                if (
+                    not website.startswith(
+                        "http://"
+                    )
+                    and not website.startswith(
+                        "https://"
+                    )
+                ):
+
+                    website = (
+                        "https://"
+                        + website
+                    )
+
+            # ------------------------------------------------
+            # RESULT
+            # ------------------------------------------------
+
+            results.append({
+
+                "name":
+                    name,
+
+                "type":
+                    selected_type,
+
+                "address":
+                    address,
+
+                "phone":
+                    phone,
+
+                "website":
+                    website,
+
+                "opening_hours":
+                    opening_hours,
+
+                "lat":
+                    place_lat,
+
+                "lng":
+                    place_lng
+            })
+
+        # ----------------------------------------------------
+        # REMOVE DUPLICATES
+        # ----------------------------------------------------
+
+        unique_results = []
+
+        seen = set()
+
+        for result in results:
+
+            key = (
+                result["name"],
+                round(
+                    result["lat"],
+                    5
+                ),
+                round(
+                    result["lng"],
+                    5
+                )
+            )
+
+            if key in seen:
+                continue
+
+            seen.add(key)
+
+            unique_results.append(
+                result
+            )
+
+        return jsonify({
+
+            "type":
+                selected_type,
+
+            "results":
+                unique_results
+
+        })
+
+    except Exception as e:
+
+        print(
+            "Healthcare search error:",
+            e
+        )
+
+        return jsonify({
+
+            "error":
+                "Could not connect to OpenStreetMap.",
+
+            "results":
+                []
+
+        }), 502
 
 # ============================================================
 # GEOCODE ADDRESS
