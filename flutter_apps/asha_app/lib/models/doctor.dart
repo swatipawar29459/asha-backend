@@ -21,24 +21,36 @@ class Doctor {
 
   factory Doctor.fromJson(Map<String, dynamic> json) {
     return Doctor(
-      name: json['name']?.toString() ?? 'Unnamed healthcare provider',
-      type: json['type']?.toString() ?? 'Healthcare',
+      name: json['name']?.toString() ?? 'Healthcare provider',
+      type: json['type']?.toString() ?? 'doctor',
       address: json['address']?.toString() ?? '',
-      phone: _nullable(json['phone']),
-      website: _nullable(json['website']),
-      openingHours: _nullable(json['opening_hours']),
-      lat: (json['lat'] as num).toDouble(),
-      lng: (json['lng'] as num).toDouble(),
+      phone: _optionalString(json['phone']),
+      website: _optionalString(json['website']),
+      openingHours: _optionalString(json['opening_hours']),
+      lat: _toDouble(json['lat']),
+      lng: _toDouble(json['lng']),
     );
   }
 
-  static String? _nullable(dynamic value) {
-    final text = value?.toString().trim();
+  static String? _optionalString(dynamic value) {
+    if (value == null) {
+      return null;
+    }
 
-    if (text == null || text.isEmpty) {
+    final String text = value.toString().trim();
+
+    if (text.isEmpty) {
       return null;
     }
 
     return text;
+  }
+
+  static double _toDouble(dynamic value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(value?.toString() ?? '') ?? 0.0;
   }
 }

@@ -1,17 +1,16 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../theme/asha_theme.dart';
-import '../services/api_service.dart';
 import '../models/doctor.dart';
 
 class FindDoctorScreen extends StatefulWidget {
-  const FindDoctorScreen({
-    super.key,
-  });
+  const FindDoctorScreen({super.key});
 
   @override
   State<FindDoctorScreen> createState() =>
@@ -20,60 +19,86 @@ class FindDoctorScreen extends StatefulWidget {
 
 class _FindDoctorScreenState
     extends State<FindDoctorScreen> {
-  final TextEditingController _addressController =
+  static const String baseUrl =
+      'https://asha-backend-1.onrender.com';
+
+  final TextEditingController _locationController =
       TextEditingController();
 
-  List<Doctor> results = [];
+  final MapController _mapController =
+      MapController();
 
-  LatLng? selectedLocation;
+  bool _mapReady = false;
 
-  bool loading = false;
+  double? _pendingMapLatitude;
+  double? _pendingMapLongitude;
 
-  String? error;
+  String selectedType = 'doctor';
 
-  // Doctor / Clinic / Hospital
-  String selectedType = 'Doctor';
+  double? latitude;
+  double? longitude;
+
+  String locationText = '';
+
+  String sourceText = '';
+
+  List<Doctor> doctors = [];
+
+  bool loadingLocation = false;
+  bool loadingDoctors = false;
+
+  String? errorMessage;
+
+  @override
+  void dispose() {
+    _locationController.dispose();
+    super.dispose();
+  }
 
   // ============================================================
-  // TYPE NAME
+  // MAP
   // ============================================================
 
+  void moveMapTo(
+    double lat,
+    double lng,
+    double zoom,
+  ) {
+    _pendingMapLatitude = lat;
+    _pendingMapLongitude = lng;
 
-  String get _typeNamePlural {
-    switch (selectedType) {
-      case 'Doctor':
-        return 'doctors';
-
-      case 'Clinic':
-        return 'clinics';
-
-      case 'Hospital':
-        return 'hospitals';
-
-      default:
-        return 'healthcare providers';
+    if (!_mapReady) {
+      return;
     }
+
+    _mapController.move(
+      LatLng(lat, lng),
+      zoom,
+    );
   }
 
   // ============================================================
   // CURRENT LOCATION
   // ============================================================
 
-  Future<void> _useCurrentLocation() async {
+  Future<void> useCurrentLocation() async {
     setState(() {
-      loading = true;
-      error = null;
-      results = [];
+      loadingLocation = true;
+      errorMessage = null;
+      sourceText = '';
     });
 
     try {
-      final serviceEnabled =
+      final bool serviceEnabled =
           await Geolocator.isLocationServiceEnabled();
 
       if (!serviceEnabled) {
-        throw Exception(
-          'Location services are disabled. Please turn on GPS/location on your phone.',
-        );
+        setState(() {
+          loadingLocation = false;
+          errorMessage =
+              'Please turn on location services and try again.';
+        });
+        return;
       }
 
       LocationPermission permission =
@@ -85,778 +110,638 @@ class _FindDoctorScreenState
       }
 
       if (permission == LocationPermission.denied) {
-        throw Exception(
-          'Location permission denied.',
-        );
+        setState(() {
+          loadingLocation = false;
+          errorMessage =
+              'Location permission was denied.';
+        });
+        return;
       }
 
-      if (permission == LocationPermission.deniedForever) {
-        throw Exception(
-          'Location permission permanently denied. Please enable location permission in phone Settings.',
-        );
+      if (permission ==
+          LocationPermission.deniedForever) {
+        setState(() {
+          loadingLocation = false;
+          errorMessage =
+              'Location permission is permanently denied. Please enable it from app settings.';
+        });
+        return;
       }
 
-      final position =
-          await Geolocator.getCurrentPosition();
-
-      print(
-        'Current location: '
-        '${position.latitude}, '
-        '${position.longitude}',
-      );
-
-      final location = LatLng(
-        position.latitude,
-        position.longitude,
-      );
-
-      final places =
-          await ApiService.findDoctors(
-        position.latitude,
-        position.longitude,
-        type: selectedType,
+      final Position position =
+          await Geolocator.getCurrentPosition(
+        desiredAccuracy:
+            LocationAccuracy.high,
       );
 
       if (!mounted) return;
 
       setState(() {
-        selectedLocation = location;
-        results = places;
-        loading = false;
-
-        if (places.isEmpty) {
-          error =
-              'No nearby $_typeNamePlural were found in this area.';
-        }
+        latitude = position.latitude;
+        longitude = position.longitude;
+        locationText = 'Current location';
+        loadingLocation = false;
       });
-    } catch (e) {
-      print(
-        'Find healthcare error: $e',
+
+      moveMapTo(
+        position.latitude,
+        position.longitude,
+        14,
       );
 
+      await findHealthcare(
+        position.latitude,
+        position.longitude,
+      );
+    } catch (e) {
       if (!mounted) return;
 
       setState(() {
-        error = e
-            .toString()
-            .replaceFirst(
-              'Exception: ',
-              '',
-            );
-
-        loading = false;
+        loadingLocation = false;
+        errorMessage =
+            'Could not get your current location.';
       });
     }
   }
 
   // ============================================================
-  // MANUAL ADDRESS SEARCH
+  // SEARCH LOCATION
   // ============================================================
 
-  Future<void> _searchByAddress() async {
-    final address =
-        _addressController.text.trim();
+  Future<void> searchLocation() async {
+    final String address =
+        _locationController.text.trim();
 
     if (address.isEmpty) {
       setState(() {
-        error =
+        errorMessage =
             'Please enter a location.';
       });
       return;
     }
 
     setState(() {
-      loading = true;
-      error = null;
-      results = [];
+      loadingLocation = true;
+      errorMessage = null;
+      sourceText = '';
+      doctors = [];
     });
 
     try {
-      final location =
-          await ApiService.geocodeAddress(
-        address,
+      final Uri uri = Uri.https(
+        'nominatim.openstreetmap.org',
+        '/search',
+        {
+          'q':
+              '$address, Mumbai, India',
+          'format':
+              'json',
+          'limit':
+              '1',
+        },
       );
 
-      final lat =
-          (location['lat'] as num).toDouble();
+      final response = await http.get(
+        uri,
+        headers: {
+          'User-Agent':
+              'Asha-Womens-Health-App/1.0',
+          'Accept':
+              'application/json',
+        },
+      ).timeout(
+        const Duration(seconds: 15),
+      );
 
-      final lng =
-          (location['lng'] as num).toDouble();
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Location search failed',
+        );
+      }
 
-      final searchedLocation =
-          LatLng(lat, lng);
+      final List<dynamic> results =
+          jsonDecode(response.body);
 
-      final places =
-          await ApiService.findDoctors(
-        lat,
-        lng,
-        type: selectedType,
+      if (results.isEmpty) {
+        setState(() {
+          loadingLocation = false;
+          errorMessage =
+              'Location not found. Try Kurla East or Nehru Nagar, Kurla.';
+        });
+        return;
+      }
+
+      final Map<String, dynamic> decoded =
+          Map<String, dynamic>.from(
+        results.first,
+      );
+
+      final double newLat =
+          double.parse(
+        decoded['lat'].toString(),
+      );
+
+      final double newLng =
+          double.parse(
+        decoded['lon'].toString(),
       );
 
       if (!mounted) return;
 
       setState(() {
-        selectedLocation =
-            searchedLocation;
+        latitude = newLat;
+        longitude = newLng;
 
-        results = places;
+        locationText =
+            decoded['display_name']
+                    ?.toString() ??
+                address;
 
-        loading = false;
+        loadingLocation = false;
+      });
 
-        if (places.isEmpty) {
-          error =
-              'Location found, but no nearby $_typeNamePlural were found.';
+      moveMapTo(
+        newLat,
+        newLng,
+        14,
+      );
+
+      await findHealthcare(
+        newLat,
+        newLng,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        loadingLocation = false;
+        errorMessage =
+            'Could not search this location.';
+      });
+    }
+  }
+
+  // ============================================================
+  // HEALTHCARE SEARCH
+  // ============================================================
+
+  Future<void> findHealthcare(
+    double lat,
+    double lng,
+  ) async {
+    setState(() {
+      loadingDoctors = true;
+      errorMessage = null;
+      sourceText = '';
+      doctors = [];
+    });
+
+    try {
+      final Uri uri = Uri.parse(
+        '$baseUrl/doctors'
+        '?lat=$lat'
+        '&lng=$lng'
+        '&type=$selectedType',
+      );
+
+      final response =
+          await http.get(uri).timeout(
+        const Duration(seconds: 55),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Server returned ${response.statusCode}',
+        );
+      }
+
+      final Map<String, dynamic> data =
+          jsonDecode(response.body);
+
+      final List<dynamic> results =
+          data['results'] is List
+              ? data['results']
+              : [];
+
+      final List<Doctor> loadedDoctors =
+          results
+              .map(
+                (item) =>
+                    Doctor.fromJson(
+                  Map<String, dynamic>.from(
+                    item,
+                  ),
+                ),
+              )
+              .where(
+                (doctor) =>
+                    doctor.lat != 0 &&
+                    doctor.lng != 0,
+              )
+              .toList();
+
+      final String source =
+          data['source']?.toString() ??
+              'Healthcare search';
+
+      if (!mounted) return;
+
+      setState(() {
+        doctors = loadedDoctors;
+        loadingDoctors = false;
+        sourceText = source;
+
+        if (loadedDoctors.isEmpty) {
+          errorMessage =
+              'No $selectedType facilities were found at this location.';
         }
       });
     } catch (e) {
-      print(
-        'Address search error: $e',
-      );
-
       if (!mounted) return;
 
       setState(() {
-        error =
-            'Could not find this location. Please try a more specific area or city.';
-
-        loading = false;
+        loadingDoctors = false;
+        errorMessage =
+            'Could not load healthcare providers. Please try again.';
       });
     }
   }
 
   // ============================================================
-  // TYPE SELECTION
+  // CATEGORY
   // ============================================================
 
-  void _selectType(String type) {
-    setState(() {
-      selectedType = type;
-      results = [];
-      error = null;
-    });
-
-    if (selectedLocation != null) {
-      _searchSelectedLocation();
-    }
-  }
-
-  Future<void> _searchSelectedLocation() async {
-    if (selectedLocation == null) {
+  Future<void> changeType(
+    String type,
+  ) async {
+    if (selectedType == type) {
       return;
     }
 
     setState(() {
-      loading = true;
-      error = null;
-      results = [];
+      selectedType = type;
     });
 
-    try {
-      final places =
-          await ApiService.findDoctors(
-        selectedLocation!.latitude,
-        selectedLocation!.longitude,
-        type: selectedType,
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        results = places;
-        loading = false;
-
-        if (places.isEmpty) {
-          error =
-              'No nearby $_typeNamePlural were found.';
-        }
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        error =
-            'Could not load nearby $_typeNamePlural.';
-        loading = false;
-      });
-    }
-  }
-
-  // ============================================================
-  // OPEN WEBSITE
-  // ============================================================
-
-  Future<void> _openWebsite(
-    String website,
-  ) async {
-    try {
-      final url =
-          Uri.parse(website);
-
-      if (!await launchUrl(
-        url,
-        mode: LaunchMode.externalApplication,
-      )) {
-        throw Exception();
-      }
-    } catch (_) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not open this website.',
-          ),
-        ),
+    if (latitude != null &&
+        longitude != null) {
+      await findHealthcare(
+        latitude!,
+        longitude!,
       );
     }
   }
 
   // ============================================================
-  // CALL
+  // MAP MARKERS
   // ============================================================
 
-  Future<void> _callPlace(
-    String phone,
-  ) async {
-    try {
-      final cleanedPhone =
-          phone.replaceAll(
-        RegExp(r'[^0-9+]'),
-        '',
-      );
+  List<Marker> getMarkers() {
+    final List<Marker> markers = [];
 
-      final url =
-          Uri.parse(
-        'tel:$cleanedPhone',
-      );
-
-      if (!await launchUrl(url)) {
-        throw Exception();
-      }
-    } catch (_) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not open the phone dialer.',
+    if (latitude != null &&
+        longitude != null) {
+      markers.add(
+        Marker(
+          point: LatLng(
+            latitude!,
+            longitude!,
+          ),
+          width: 40,
+          height: 40,
+          child: const Icon(
+            Icons.my_location,
+            color: Color(0xFFD8754E),
+            size: 30,
           ),
         ),
       );
     }
+
+    for (final Doctor doctor in doctors) {
+      markers.add(
+        Marker(
+          point: LatLng(
+            doctor.lat,
+            doctor.lng,
+          ),
+          width: 45,
+          height: 45,
+          child: GestureDetector(
+            onTap: () {
+              if (!_mapReady) {
+                return;
+              }
+
+              _mapController.move(
+                LatLng(
+                  doctor.lat,
+                  doctor.lng,
+                ),
+                16,
+              );
+            },
+            child: const Icon(
+              Icons.location_on,
+              color: Color(0xFFD8754E),
+              size: 40,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return markers;
   }
 
   // ============================================================
   // DIRECTIONS
   // ============================================================
 
-  Future<void> _openDirections(
+  Future<void> openDirections(
     Doctor doctor,
   ) async {
-    final url = Uri.parse(
+    final Uri uri = Uri.parse(
       'https://www.google.com/maps/dir/?api=1'
       '&destination=${doctor.lat},${doctor.lng}',
     );
 
-    try {
-      if (!await launchUrl(
-        url,
-        mode: LaunchMode.externalApplication,
-      )) {
-        throw Exception();
-      }
-    } catch (_) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not open directions.',
-          ),
-        ),
-      );
-    }
-  }
-
-  // ============================================================
-  // TYPE ICON
-  // ============================================================
-
-  IconData _getTypeIcon(
-    String type,
-  ) {
-    switch (type) {
-      case 'Doctor':
-        return Icons.person_rounded;
-
-      case 'Clinic':
-        return Icons.medical_services_rounded;
-
-      case 'Hospital':
-        return Icons.local_hospital_rounded;
-
-      default:
-        return Icons.health_and_safety_rounded;
-    }
-  }
-
-  // ============================================================
-  // MAP
-  // ============================================================
-
-  Widget _buildMap() {
-    if (selectedLocation == null) {
-      return Container(
-        height: 280,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color:
-              AshaColors.peach.withOpacity(0.25),
-          borderRadius:
-              BorderRadius.circular(20),
-        ),
-        child: const Center(
-          child: Padding(
-            padding: EdgeInsets.all(20),
-            child: Text(
-              'Choose a location to see nearby healthcare',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight:
-                    FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return SizedBox(
-      height: 280,
-      width: double.infinity,
-      child: ClipRRect(
-        borderRadius:
-            BorderRadius.circular(20),
-        child: FlutterMap(
-          options: MapOptions(
-            initialCenter:
-                selectedLocation!,
-            initialZoom: 14,
-          ),
-          children: [
-            TileLayer(
-              urlTemplate:
-                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName:
-                  'com.example.asha_app',
-            ),
-
-            MarkerLayer(
-              markers: [
-                // User location
-                Marker(
-                  point:
-                      selectedLocation!,
-                  width: 50,
-                  height: 50,
-                  child: const Icon(
-                    Icons.location_pin,
-                    size: 42,
-                    color: Colors.blue,
-                  ),
-                ),
-
-                // Healthcare locations
-                ...results.map(
-                  (place) => Marker(
-                    point: LatLng(
-                      place.lat,
-                      place.lng,
-                    ),
-                    width: 45,
-                    height: 45,
-                    child: Icon(
-                      _getTypeIcon(
-                        place.type,
-                      ),
-                      size: 34,
-                      color:
-                          AshaColors.coral,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const RichAttributionWidget(
-              attributions: [
-                TextSourceAttribution(
-                  'OpenStreetMap contributors',
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+    await launchUrl(
+      uri,
+      mode:
+          LaunchMode.externalApplication,
     );
   }
 
   // ============================================================
-  // HEALTHCARE CARD
+  // CALL
   // ============================================================
 
-  Widget _doctorCard(
+  Future<void> callDoctor(
+    String phone,
+  ) async {
+    final Uri uri = Uri.parse(
+      'tel:$phone',
+    );
+
+    await launchUrl(uri);
+  }
+
+  // ============================================================
+  // WEBSITE
+  // ============================================================
+
+  Future<void> openWebsite(
+    String website,
+  ) async {
+    String url = website.trim();
+
+    if (!url.startsWith('http://') &&
+        !url.startsWith('https://')) {
+      url = 'https://$url';
+    }
+
+    await launchUrl(
+      Uri.parse(url),
+      mode:
+          LaunchMode.externalApplication,
+    );
+  }
+
+  // ============================================================
+  // DOCTOR CARD
+  // ============================================================
+
+  Widget buildDoctorCard(
     Doctor doctor,
   ) {
-    return AshaCard(
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          // ----------------------------------------------------
-          // NAME + TYPE
-          // ----------------------------------------------------
+    return Card(
+      margin:
+          const EdgeInsets.only(
+        bottom: 14,
+      ),
+      elevation: 2,
+      shape:
+          RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.circular(18),
+      ),
+      child: Padding(
+        padding:
+            const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
 
-          Row(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color:
-                      AshaColors.peach,
-                  borderRadius:
-                      BorderRadius.circular(
-                    14,
+            Row(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration:
+                      BoxDecoration(
+                    color:
+                        const Color(
+                      0xFFFFE9DC,
+                    ),
+                    borderRadius:
+                        BorderRadius.circular(
+                      14,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons
+                        .local_hospital_outlined,
+                    color:
+                        Color(0xFFD8754E),
                   ),
                 ),
-                child: Icon(
-                  _getTypeIcon(
-                    doctor.type,
-                  ),
-                  color:
-                      AshaColors.coral,
+
+                const SizedBox(
+                  width: 12,
                 ),
-              ),
 
-              const SizedBox(
-                width: 12,
-              ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
 
-              Expanded(
-                child: Column(
+                      Text(
+                        doctor.name,
+                        style:
+                            const TextStyle(
+                          fontSize: 16,
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height: 4,
+                      ),
+
+                      Text(
+                        doctor.type
+                            .toUpperCase(),
+                        style:
+                            const TextStyle(
+                          fontSize: 11,
+                          color:
+                              Color(
+                            0xFFD8754E,
+                          ),
+                          fontWeight:
+                              FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            if (doctor.address.isNotEmpty)
+              ...[
+
+                const SizedBox(
+                  height: 12,
+                ),
+
+                Row(
                   crossAxisAlignment:
                       CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      doctor.name,
-                      style:
-                          const TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
-                        fontSize: 15,
-                      ),
+
+                    const Icon(
+                      Icons
+                          .location_on_outlined,
+                      size: 19,
+                      color:
+                          Colors.grey,
                     ),
 
                     const SizedBox(
-                      height: 6,
+                      width: 7,
                     ),
 
-                    Container(
-                      padding:
-                          const EdgeInsets
-                              .symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration:
-                          BoxDecoration(
-                        color:
-                            AshaColors.peach,
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                          8,
-                        ),
-                      ),
+                    Expanded(
                       child: Text(
-                        doctor.type,
+                        doctor.address,
                         style:
                             const TextStyle(
-                          fontSize: 10,
-                          fontWeight:
-                              FontWeight.w600,
+                          fontSize: 13,
+                          color:
+                              Colors.black87,
                         ),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
+              ],
 
-          // ----------------------------------------------------
-          // ADDRESS
-          // ----------------------------------------------------
-
-          if (doctor.address
-              .trim()
-              .isNotEmpty) ...[
-            const SizedBox(
-              height: 12,
-            ),
-
-            Row(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.location_on_outlined,
-                  size: 18,
-                  color:
-                      AshaColors.slate,
-                ),
+            if (doctor.openingHours !=
+                null)
+              ...[
 
                 const SizedBox(
-                  width: 8,
+                  height: 8,
                 ),
 
-                Expanded(
-                  child: Text(
-                    doctor.address,
-                    style:
-                        const TextStyle(
-                      fontSize: 12,
-                      height: 1.35,
+                Row(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+
+                    const Icon(
+                      Icons.access_time,
+                      size: 18,
+                      color:
+                          Colors.grey,
                     ),
-                  ),
+
+                    const SizedBox(
+                      width: 7,
+                    ),
+
+                    Expanded(
+                      child: Text(
+                        doctor
+                            .openingHours!,
+                        style:
+                            const TextStyle(
+                          fontSize: 13,
+                          color:
+                              Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ],
 
-          // ----------------------------------------------------
-          // PHONE
-          // ----------------------------------------------------
-
-          if (doctor.phone != null &&
-              doctor.phone!
-                  .trim()
-                  .isNotEmpty) ...[
             const SizedBox(
-              height: 10,
+              height: 14,
             ),
 
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                const Icon(
-                  Icons.phone_outlined,
-                  size: 18,
-                  color:
-                      AshaColors.slate,
-                ),
 
-                const SizedBox(
-                  width: 8,
-                ),
-
-                Expanded(
-                  child: Text(
-                    doctor.phone!,
-                    style:
-                        const TextStyle(
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-
-          // ----------------------------------------------------
-          // OPENING HOURS
-          // ----------------------------------------------------
-
-          if (doctor.openingHours != null &&
-              doctor.openingHours!
-                  .trim()
-                  .isNotEmpty) ...[
-            const SizedBox(
-              height: 10,
-            ),
-
-            Row(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.access_time_rounded,
-                  size: 18,
-                  color:
-                      AshaColors.slate,
-                ),
-
-                const SizedBox(
-                  width: 8,
-                ),
-
-                Expanded(
-                  child: Text(
-                    doctor.openingHours!,
-                    style:
-                        const TextStyle(
-                      fontSize: 12,
-                      height: 1.35,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-
-          const SizedBox(
-            height: 16,
-          ),
-
-          // ----------------------------------------------------
-          // ACTION BUTTONS
-          // ----------------------------------------------------
-
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              // CALL
-              if (doctor.phone != null &&
-                  doctor.phone!
-                      .trim()
-                      .isNotEmpty)
                 OutlinedButton.icon(
                   onPressed: () =>
-                      _callPlace(
-                    doctor.phone!,
+                      openDirections(
+                    doctor,
                   ),
                   icon: const Icon(
-                    Icons.phone_outlined,
-                    size: 17,
+                    Icons
+                        .directions_outlined,
+                    size: 18,
                   ),
-                  label: const Text(
-                    'Call',
-                  ),
-                ),
-
-              // WEBSITE
-              if (doctor.website != null &&
-                  doctor.website!
-                      .trim()
-                      .isNotEmpty)
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      _openWebsite(
-                    doctor.website!,
-                  ),
-                  icon: const Icon(
-                    Icons.language_rounded,
-                    size: 17,
-                  ),
-                  label: const Text(
-                    'Website',
+                  label:
+                      const Text(
+                    'Directions',
                   ),
                 ),
 
-              // DIRECTIONS
-              OutlinedButton.icon(
-                onPressed: () =>
-                    _openDirections(
-                  doctor,
-                ),
-                icon: const Icon(
-                  Icons.directions_outlined,
-                  size: 17,
-                ),
-                label: const Text(
-                  'Directions',
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+                if (doctor.phone != null)
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        callDoctor(
+                      doctor.phone!,
+                    ),
+                    icon: const Icon(
+                      Icons.call_outlined,
+                      size: 18,
+                    ),
+                    label:
+                        const Text(
+                      'Call',
+                    ),
+                  ),
 
-  // ============================================================
-  // TYPE BUTTON
-  // ============================================================
-
-  Widget _typeButton({
-    required String type,
-    required String label,
-    required IconData icon,
-  }) {
-    final selected =
-        selectedType == type;
-
-    return Expanded(
-      child: GestureDetector(
-        onTap: loading
-            ? null
-            : () => _selectType(type),
-        child: AnimatedContainer(
-          duration:
-              const Duration(
-            milliseconds: 200,
-          ),
-          padding:
-              const EdgeInsets.symmetric(
-            vertical: 14,
-            horizontal: 8,
-          ),
-          decoration: BoxDecoration(
-            color: selected
-                ? AshaColors.coral
-                : AshaColors.peach
-                    .withOpacity(0.45),
-            borderRadius:
-                BorderRadius.circular(16),
-            border: Border.all(
-              color: selected
-                  ? AshaColors.coral
-                  : Colors.transparent,
+                if (doctor.website != null)
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        openWebsite(
+                      doctor.website!,
+                    ),
+                    icon: const Icon(
+                      Icons.language,
+                      size: 18,
+                    ),
+                    label:
+                        const Text(
+                      'Website',
+                    ),
+                  ),
+              ],
             ),
-          ),
-          child: Column(
-            children: [
-              Icon(
-                icon,
-                size: 24,
-                color: selected
-                    ? Colors.white
-                    : AshaColors.coral,
-              ),
-
-              const SizedBox(
-                height: 6,
-              ),
-
-              Text(
-                label,
-                textAlign:
-                    TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight:
-                      FontWeight.w600,
-                  color: selected
-                      ? Colors.white
-                      : AshaColors.ink,
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -871,299 +756,550 @@ class _FindDoctorScreenState
     BuildContext context,
   ) {
     return Scaffold(
+      backgroundColor:
+          const Color(0xFFFFF8F3),
+
       appBar: AppBar(
-        backgroundColor:
-            Colors.transparent,
-        elevation: 0,
         title: const Text(
-          'Find healthcare',
+          'Find a Doctor',
+          style: TextStyle(
+            fontWeight:
+                FontWeight.bold,
+          ),
         ),
+        backgroundColor:
+            const Color(0xFFFFF8F3),
+        elevation: 0,
+        foregroundColor:
+            Colors.black87,
       ),
 
       body: SafeArea(
-        child: Padding(
-          padding:
-              const EdgeInsets.all(20),
+        child: Column(
+          children: [
 
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'What are you looking for?',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight:
-                      FontWeight.bold,
-                ),
+            Padding(
+              padding:
+                  const EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                8,
               ),
-
-              const SizedBox(
-                height: 5,
-              ),
-
-              const Text(
-                'Find nearby doctors, clinics and hospitals.',
-                style: TextStyle(
-                  fontSize: 12,
-                ),
-              ),
-
-              const SizedBox(
-                height: 14,
-              ),
-
-              // ==================================================
-              // TYPE SELECTION
-              // ==================================================
-
-              Row(
+              child: Column(
                 children: [
-                  _typeButton(
-                    type: 'Doctor',
-                    label: 'Doctor',
-                    icon:
-                        Icons.person_rounded,
+
+                  TextField(
+                    controller:
+                        _locationController,
+                    textInputAction:
+                        TextInputAction.search,
+                    onSubmitted: (_) =>
+                        searchLocation(),
+                    decoration:
+                        InputDecoration(
+                      hintText:
+                          'Enter area, city or landmark',
+                      prefixIcon:
+                          const Icon(
+                        Icons.search,
+                      ),
+                      suffixIcon:
+                          IconButton(
+                        onPressed:
+                            loadingLocation
+                                ? null
+                                : searchLocation,
+                        icon:
+                            const Icon(
+                          Icons.arrow_forward,
+                        ),
+                      ),
+                      filled: true,
+                      fillColor:
+                          Colors.white,
+                      border:
+                          OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius
+                                .circular(
+                          16,
+                        ),
+                        borderSide:
+                            BorderSide.none,
+                      ),
+                    ),
                   ),
 
                   const SizedBox(
-                    width: 8,
+                    height: 10,
                   ),
 
-                  _typeButton(
-                    type: 'Clinic',
-                    label: 'Clinic',
-                    icon:
-                        Icons.medical_services_rounded,
-                  ),
-
-                  const SizedBox(
-                    width: 8,
-                  ),
-
-                  _typeButton(
-                    type: 'Hospital',
-                    label: 'Hospital',
-                    icon:
-                        Icons.local_hospital_rounded,
+                  SizedBox(
+                    width:
+                        double.infinity,
+                    child:
+                        OutlinedButton.icon(
+                      onPressed:
+                          loadingLocation
+                              ? null
+                              : useCurrentLocation,
+                      icon:
+                          loadingLocation
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child:
+                                      CircularProgressIndicator(
+                                    strokeWidth:
+                                        2,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons
+                                      .my_location,
+                                ),
+                      label:
+                          const Text(
+                        'Use my current location',
+                      ),
+                    ),
                   ),
                 ],
               ),
+            ),
 
-              const SizedBox(
-                height: 18,
+            // ==================================================
+            // CATEGORY BUTTONS
+            // ==================================================
+
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 6,
               ),
+              child: Row(
+                children: [
 
-              // ==================================================
-              // MANUAL SEARCH
-              // ==================================================
-
-              TextField(
-                controller:
-                    _addressController,
-
-                decoration:
-                    InputDecoration(
-                  hintText:
-                      'Enter area or address',
-
-                  prefixIcon:
-                      const Icon(
-                    Icons.search,
-                  ),
-
-                  suffixIcon:
-                      IconButton(
-                    icon:
-                        const Icon(
+                  Expanded(
+                    child:
+                        _categoryButton(
+                      'doctor',
+                      'Doctors',
                       Icons
-                          .arrow_forward_rounded,
+                          .person_outline,
                     ),
-                    onPressed:
-                        loading
-                            ? null
-                            : _searchByAddress,
                   ),
 
-                  filled: true,
-
-                  border:
-                      OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(
-                      16,
-                    ),
-                    borderSide:
-                        BorderSide.none,
+                  const SizedBox(
+                    width: 8,
                   ),
+
+                  Expanded(
+                    child:
+                        _categoryButton(
+                      'clinic',
+                      'Clinics',
+                      Icons
+                          .medical_services_outlined,
+                    ),
+                  ),
+
+                  const SizedBox(
+                    width: 8,
+                  ),
+
+                  Expanded(
+                    child:
+                        _categoryButton(
+                      'hospital',
+                      'Hospitals',
+                      Icons
+                          .local_hospital_outlined,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // ==================================================
+            // LOCATION
+            // ==================================================
+
+            if (locationText.isNotEmpty)
+              Padding(
+                padding:
+                    const EdgeInsets.fromLTRB(
+                  16,
+                  4,
+                  16,
+                  4,
                 ),
+                child: Row(
+                  children: [
 
-                onSubmitted:
-                    (_) =>
-                        _searchByAddress(),
-              ),
-
-              const SizedBox(
-                height: 10,
-              ),
-
-              // ==================================================
-              // CURRENT LOCATION
-              // ==================================================
-
-              SizedBox(
-                width:
-                    double.infinity,
-
-                child:
-                    OutlinedButton.icon(
-                  onPressed:
-                      loading
-                          ? null
-                          : _useCurrentLocation,
-
-                  icon:
-                      const Icon(
-                    Icons.my_location,
-                  ),
-
-                  label:
-                      const Text(
-                    'Use my current location',
-                  ),
-
-                  style:
-                      OutlinedButton
-                          .styleFrom(
-                    padding:
-                        const EdgeInsets
-                            .symmetric(
-                      vertical: 14,
+                    const Icon(
+                      Icons.location_on,
+                      size: 17,
+                      color:
+                          Color(0xFFD8754E),
                     ),
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(
-                        16,
+
+                    const SizedBox(
+                      width: 5,
+                    ),
+
+                    Expanded(
+                      child: Text(
+                        locationText,
+                        maxLines: 2,
+                        overflow:
+                            TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(
+                          fontSize: 12,
+                          color:
+                              Colors.black54,
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ),
 
-              const SizedBox(
-                height: 14,
-              ),
+            // ==================================================
+            // SOURCE
+            // ==================================================
 
-              // ==================================================
-              // LOADING
-              // ==================================================
-
-              if (loading)
-                const Padding(
-                  padding:
-                      EdgeInsets.symmetric(
-                    vertical: 8,
-                  ),
-                  child: Center(
-                    child:
-                        CircularProgressIndicator(),
-                  ),
+            if (sourceText.isNotEmpty)
+              Padding(
+                padding:
+                    const EdgeInsets.fromLTRB(
+                  16,
+                  2,
+                  16,
+                  6,
                 ),
-
-              // ==================================================
-              // ERROR
-              // ==================================================
-
-              if (error != null)
-                Padding(
-                  padding:
-                      const EdgeInsets.only(
-                    bottom: 10,
-                  ),
+                child: Align(
+                  alignment:
+                      Alignment.centerLeft,
                   child: Text(
-                    error!,
+                    'Results from $sourceText',
                     style:
                         const TextStyle(
-                      fontSize: 12,
+                      fontSize: 10,
+                      color:
+                          Colors.black45,
                     ),
                   ),
                 ),
-
-              // ==================================================
-              // MAP
-              // ==================================================
-
-              _buildMap(),
-
-              const SizedBox(
-                height: 14,
               ),
 
-              Text(
-                'Nearby $_typeNamePlural',
-                style:
-                    const TextStyle(
-                  fontSize: 16,
-                  fontWeight:
-                      FontWeight.bold,
-                ),
-              ),
+            // ==================================================
+            // MAP
+            // ==================================================
 
-              const SizedBox(
-                height: 8,
-              ),
+            Expanded(
+              flex: 5,
+              child:
+                  latitude == null ||
+                          longitude == null
+                      ? Container(
+                          margin:
+                              const EdgeInsets
+                                  .symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          decoration:
+                              BoxDecoration(
+                            color:
+                                const Color(
+                              0xFFFFE9DC,
+                            ),
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              20,
+                            ),
+                          ),
+                          child:
+                              const Center(
+                            child: Column(
+                              mainAxisSize:
+                                  MainAxisSize
+                                      .min,
+                              children: [
 
-              // ==================================================
-              // RESULTS
-              // ==================================================
+                                Icon(
+                                  Icons
+                                      .map_outlined,
+                                  size: 45,
+                                  color:
+                                      Color(
+                                    0xFFD8754E,
+                                  ),
+                                ),
 
-              Expanded(
-                child: results.isEmpty
-                    ? Center(
-                        child: Text(
-                          selectedLocation ==
-                                  null
-                              ? 'Choose a location to find nearby $_typeNamePlural.'
-                              : 'No nearby $_typeNamePlural found.',
-                          textAlign:
-                              TextAlign.center,
-                          style:
-                              const TextStyle(
-                            fontSize: 12,
+                                SizedBox(
+                                  height: 10,
+                                ),
+
+                                Text(
+                                  'Search a location to see nearby healthcare providers',
+                                  textAlign:
+                                      TextAlign
+                                          .center,
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : ClipRRect(
+                          borderRadius:
+                              BorderRadius
+                                  .circular(
+                            20,
+                          ),
+                          child:
+                              FlutterMap(
+                            mapController:
+                                _mapController,
+                            options:
+                                MapOptions(
+                              initialCenter:
+                                  LatLng(
+                                latitude!,
+                                longitude!,
+                              ),
+                              initialZoom:
+                                  14,
+                              onMapReady:
+                                  () {
+                                _mapReady =
+                                    true;
+
+                                if (_pendingMapLatitude !=
+                                        null &&
+                                    _pendingMapLongitude !=
+                                        null) {
+                                  _mapController
+                                      .move(
+                                    LatLng(
+                                      _pendingMapLatitude!,
+                                      _pendingMapLongitude!,
+                                    ),
+                                    14,
+                                  );
+                                }
+                              },
+                            ),
+                            children: [
+
+                              TileLayer(
+                                urlTemplate:
+                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                userAgentPackageName:
+                                    'com.asha.womenshealth',
+                              ),
+
+                              MarkerLayer(
+                                markers:
+                                    getMarkers(),
+                              ),
+
+                              RichAttributionWidget(
+                                attributions:
+                                    [
+                                  TextSourceAttribution(
+                                    'OpenStreetMap contributors',
+                                    onTap:
+                                        () {
+                                      launchUrl(
+                                        Uri.parse(
+                                          'https://www.openstreetmap.org/copyright',
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                      )
-                    : ListView.separated(
-                        itemCount:
-                            results.length,
-                        separatorBuilder:
-                            (_, __) =>
-                                const SizedBox(
-                          height: 10,
-                        ),
-                        itemBuilder:
-                            (_, index) {
-                          return _doctorCard(
-                            results[index],
-                          );
-                        },
-                      ),
+            ),
+
+            // ==================================================
+            // RESULTS
+            // ==================================================
+
+            Expanded(
+              flex: 4,
+              child: Padding(
+                padding:
+                    const EdgeInsets.fromLTRB(
+                  16,
+                  12,
+                  16,
+                  0,
+                ),
+                child:
+                    loadingDoctors
+                        ? const Center(
+                            child:
+                                CircularProgressIndicator(),
+                          )
+                        : errorMessage !=
+                                    null &&
+                                doctors.isEmpty
+                            ? Center(
+                                child:
+                                    Padding(
+                                  padding:
+                                      const EdgeInsets
+                                          .all(
+                                    20,
+                                  ),
+                                  child:
+                                      Column(
+                                    mainAxisSize:
+                                        MainAxisSize
+                                            .min,
+                                    children: [
+
+                                      const Icon(
+                                        Icons
+                                            .location_searching,
+                                        size: 40,
+                                        color:
+                                            Color(
+                                          0xFFD8754E,
+                                        ),
+                                      ),
+
+                                      const SizedBox(
+                                        height: 10,
+                                      ),
+
+                                      Text(
+                                        errorMessage!,
+                                        textAlign:
+                                            TextAlign
+                                                .center,
+                                        style:
+                                            const TextStyle(
+                                          color:
+                                              Colors
+                                                  .black54,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            : doctors.isEmpty
+                                ? const Center(
+                                    child:
+                                        Text(
+                                      'Search a location to find nearby providers.',
+                                      textAlign:
+                                          TextAlign
+                                              .center,
+                                    ),
+                                  )
+                                : ListView
+                                    .builder(
+                                    itemCount:
+                                        doctors.length,
+                                    itemBuilder:
+                                        (
+                                      context,
+                                      index,
+                                    ) {
+                                      return buildDoctorCard(
+                                        doctors[
+                                            index],
+                                      );
+                                    },
+                                  ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
   // ============================================================
-  // DISPOSE
+  // CATEGORY BUTTON
   // ============================================================
 
-  @override
-  void dispose() {
-    _addressController.dispose();
-    super.dispose();
+  Widget _categoryButton(
+    String type,
+    String label,
+    IconData icon,
+  ) {
+    final bool selected =
+        selectedType == type;
+
+    return OutlinedButton.icon(
+      onPressed: () =>
+          changeType(type),
+
+      style:
+          OutlinedButton.styleFrom(
+        backgroundColor:
+            selected
+                ? const Color(
+                    0xFFD8754E,
+                  )
+                : Colors.white,
+
+        foregroundColor:
+            selected
+                ? Colors.white
+                : const Color(
+                    0xFFD8754E,
+                  ),
+
+        side:
+            const BorderSide(
+          color:
+              Color(0xFFD8754E),
+        ),
+
+        padding:
+            const EdgeInsets.symmetric(
+          vertical: 11,
+          horizontal: 4,
+        ),
+
+        shape:
+            RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.circular(
+            14,
+          ),
+        ),
+      ),
+
+      icon:
+          Icon(
+        icon,
+        size: 18,
+      ),
+
+      label:
+          Text(
+        label,
+        style:
+            const TextStyle(
+          fontSize: 12,
+          fontWeight:
+              FontWeight.w600,
+        ),
+      ),
+    );
   }
 }

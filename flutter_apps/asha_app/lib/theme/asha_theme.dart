@@ -16,6 +16,8 @@ class AshaColors {
   static const lavender = Color(0xFFE7DDF2);    // insights tint
   static const lavenderDark = Color(0xFFC3AEDD);
   static const alert = Color(0xFFD9503F);
+
+  static Color? get background => null;
 }
 
 class AshaTheme {
