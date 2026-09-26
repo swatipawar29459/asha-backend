@@ -6,24 +6,22 @@ import '../services/api_service.dart';
 import '../services/health_profile_store.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+  });
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() =>
+      _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState
+    extends State<HomeScreen> {
   Prediction? prediction;
 
   bool isLoading = true;
 
   String userName = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
 
   // ============================================================
   // LOAD HOME DATA
@@ -44,23 +42,47 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
+      // ----------------------------------------------------------
+      // ALWAYS LOAD THE LOCAL FIREBASE-UID PROFILE FIRST
+      // ----------------------------------------------------------
+
       await HealthProfileStore.load();
 
-      final result =
-          await ApiService.fetchPrediction(
-        userId: user.uid,
-      );
+      userName =
+          HealthProfileStore.userName.isNotEmpty
+              ? HealthProfileStore.userName
+              : (user.displayName ?? 'there');
+
+      // ----------------------------------------------------------
+      // TRY ML BACKEND PREDICTION
+      // ----------------------------------------------------------
+
+      Prediction? result;
+
+      try {
+        result =
+            await ApiService.fetchPrediction(
+          userId: user.uid,
+        );
+      } catch (e) {
+        // Backend prediction can fail if the profile is incomplete.
+        // Home should still work using the saved cycle data.
+        debugPrint(
+          'ML prediction unavailable: $e',
+        );
+      }
+
+      // ----------------------------------------------------------
+      // FALLBACK TO SAVED PROFILE DATA
+      // ----------------------------------------------------------
+
+      result ??=
+          _buildLocalPrediction();
 
       if (!mounted) return;
 
       setState(() {
         prediction = result;
-
-        userName =
-            HealthProfileStore.userName.isNotEmpty
-                ? HealthProfileStore.userName
-                : (user.displayName ?? 'there');
-
         isLoading = false;
       });
     } catch (e) {
@@ -74,6 +96,133 @@ class _HomeScreenState extends State<HomeScreen> {
         isLoading = false;
       });
     }
+  }
+
+  // ============================================================
+  // LOCAL PREDICTION FALLBACK
+  // ============================================================
+
+  Prediction? _buildLocalPrediction() {
+    final lastPeriod =
+        HealthProfileStore.lastPeriodDate;
+
+    if (lastPeriod == null) {
+      return null;
+    }
+
+    final cycleLength =
+        HealthProfileStore.cycleLength > 0
+            ? HealthProfileStore.cycleLength
+            : 28;
+
+    final currentDay =
+        HealthProfileStore.currentCycleDay;
+
+    final progress =
+        (currentDay / cycleLength)
+            .clamp(0.0, 1.0);
+
+    final nextPeriod =
+        HealthProfileStore.predictedNextPeriod;
+
+    if (nextPeriod == null) {
+      return null;
+    }
+
+    final nextLabel =
+        _formatDate(nextPeriod);
+
+    return Prediction(
+      currentDay: currentDay,
+
+      phaseLabel:
+          _localPhaseLabel(
+        currentDay,
+        cycleLength,
+      ),
+
+      nextPeriodLabel:
+          nextLabel,
+
+      fertileWindowLabel:
+          HealthProfileStore
+              .fertileWindowLabel,
+
+      cycleProgress:
+          progress,
+
+      factorWeights:
+          const {},
+
+      pcosRisk:
+          HealthProfileStore.pcos == 1
+              ? 'Reported PCOS'
+              : 'No PCOS reported',
+
+      avgCycleLength:
+          cycleLength,
+
+      avgPeriodLength:
+          HealthProfileStore.periodLength ??
+              5,
+
+      cycleLengthHistory:
+          const [],
+
+      predictedCycleLength:
+          cycleLength,
+    );
+  }
+
+  // ============================================================
+  // DATE FORMAT
+  // ============================================================
+
+  String _formatDate(
+    DateTime date,
+  ) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
+  // ============================================================
+  // LOCAL PHASE
+  // ============================================================
+
+  String _localPhaseLabel(
+    int day,
+    int cycleLength,
+  ) {
+    if (day <= 5) {
+      return 'Menstrual phase';
+    }
+
+    final ovulationDay =
+        cycleLength - 14;
+
+    if (day < ovulationDay - 5) {
+      return 'Follicular phase';
+    }
+
+    if (day <= ovulationDay) {
+      return 'Fertile phase';
+    }
+
+    return 'Luteal phase';
   }
 
   // ============================================================
@@ -97,11 +246,29 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isDueToday(
     Prediction p,
   ) {
-    return p.nextPeriodLabel
-        .toLowerCase()
-        .contains(
-          'due today',
-        );
+    final next =
+        HealthProfileStore.predictedNextPeriod;
+
+    if (next == null) {
+      return p.nextPeriodLabel
+          .toLowerCase()
+          .contains(
+            'due today',
+          );
+    }
+
+    final now =
+        DateTime.now();
+
+    final today = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    );
+
+    return next.year == today.year &&
+        next.month == today.month &&
+        next.day == today.day;
   }
 
   String _cycleCenterText(
@@ -131,6 +298,19 @@ class _HomeScreenState extends State<HomeScreen> {
   String _formatNextPeriod(
     Prediction p,
   ) {
+    // ----------------------------------------------------------
+    // IMPORTANT:
+    // Prefer the saved HealthProfileStore cycle calculation.
+    // This prevents stale backend labels such as "In 9 days".
+    // ----------------------------------------------------------
+
+    final next =
+        HealthProfileStore.predictedNextPeriod;
+
+    if (next != null) {
+      return _formatDate(next);
+    }
+
     if (p.nextPeriodLabel.isEmpty) {
       return 'Not available';
     }
@@ -247,8 +427,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
 
-                          // Notification button
-
                           GestureDetector(
                             onTap: () {
                               Navigator.pushNamed(
@@ -345,10 +523,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(
                               height: 18,
                             ),
-
-                            // ==================================================
-                            // CYCLE RING
-                            // ==================================================
 
                             SizedBox(
                               width: 205,
@@ -476,11 +650,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               height: 20,
                             ),
 
-                            // ==================================================
-                            // MODEL INFORMATION
-                            // ==================================================
-
-                            if (p != null)
+                            if (p != null &&
+                                p.predictedCycleLength !=
+                                    0)
                               Container(
                                 padding:
                                     const EdgeInsets
@@ -566,7 +738,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                   'Next period',
 
                               value: p == null
-                                  ? 'Not available'
+                                  ? HealthProfileStore
+                                      .predictedNextPeriod !=
+                                      null
+                                      ? _formatDate(
+                                          HealthProfileStore
+                                              .predictedNextPeriod!,
+                                        )
+                                      : 'Not available'
                                   : _formatNextPeriod(
                                       p,
                                     ),
@@ -586,7 +765,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   'Fertile window',
 
                               value: p == null
-                                  ? 'Not available'
+                                  ? HealthProfileStore
+                                      .fertileWindowLabel
                                   : p
                                       .fertileWindowLabel,
                             ),
@@ -712,8 +892,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           TextStyle(
                                         fontSize: 16,
                                         fontWeight:
-                                            FontWeight
-                                                .w700,
+                                            FontWeight.w700,
                                         color:
                                             Color(
                                           0xFF4A332B,
@@ -961,7 +1140,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-
 // ================================================================
 // MODEL FACTORS CARD
 // ================================================================
@@ -1163,7 +1341,6 @@ class _ModelFactorsCard extends StatelessWidget {
   }
 }
 
-
 // ================================================================
 // INFO CARD
 // ================================================================
@@ -1272,7 +1449,6 @@ class _InfoCard extends StatelessWidget {
     );
   }
 }
-
 
 // ================================================================
 // ACTION CARD

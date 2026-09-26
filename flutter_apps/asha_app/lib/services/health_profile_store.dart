@@ -43,9 +43,9 @@ class HealthProfileStore {
     );
   }
 
-  // ----------------------------------------------------------
+  // ============================================================
   // CYCLE CALCULATION
-  // ----------------------------------------------------------
+  // ============================================================
 
   static int get currentCycleDay {
     if (lastPeriodDate == null) {
@@ -192,9 +192,9 @@ class HealthProfileStore {
         a.day == b.day;
   }
 
-  // ----------------------------------------------------------
+  // ============================================================
   // RESET
-  // ----------------------------------------------------------
+  // ============================================================
 
   static void resetInMemory() {
     userId = null;
@@ -216,9 +216,9 @@ class HealthProfileStore {
     periodHistory = [];
   }
 
-  // ----------------------------------------------------------
+  // ============================================================
   // LOAD
-  // ----------------------------------------------------------
+  // ============================================================
 
   static Future<void> load() async {
     final prefs =
@@ -401,9 +401,9 @@ class HealthProfileStore {
         .toList();
   }
 
-  // ----------------------------------------------------------
+  // ============================================================
   // SAVE
-  // ----------------------------------------------------------
+  // ============================================================
 
   static Future<void> save() async {
     final prefs =
@@ -546,9 +546,9 @@ class HealthProfileStore {
     );
   }
 
-  // ----------------------------------------------------------
+  // ============================================================
   // NEW PERIOD
-  // ----------------------------------------------------------
+  // ============================================================
 
   static Future<void> recordNewPeriod(
     DateTime date,
@@ -580,9 +580,9 @@ class HealthProfileStore {
     await save();
   }
 
-  // ----------------------------------------------------------
+  // ============================================================
   // PENDING PROFILE
-  // ----------------------------------------------------------
+  // ============================================================
 
   static Future<bool>
       adoptPendingProfileForCurrentUser() async {
@@ -608,7 +608,20 @@ class HealthProfileStore {
       return false;
     }
 
+    // IMPORTANT:
+    // Load the pending onboarding data first.
+    // Previously save() was called without loading it,
+    // which could save null values to the new Firebase account.
+    await _loadFromPrefix(
+      prefs,
+      _pendingPrefix,
+    );
+
+    // Now save the loaded profile under the
+    // currently authenticated Firebase UID.
     await save();
+
+    // Remove only the temporary pending copy.
     await clearPendingProfile();
 
     return true;
@@ -645,6 +658,10 @@ class HealthProfileStore {
       );
     }
   }
+
+  // ============================================================
+  // JSON
+  // ============================================================
 
   static Map<String, dynamic> toJson() {
     return {

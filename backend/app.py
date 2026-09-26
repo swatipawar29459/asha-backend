@@ -14,10 +14,15 @@ from datetime import datetime, timedelta
 # LOAD ENVIRONMENT VARIABLES
 # ============================================================
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(
+    os.path.abspath(__file__)
+)
 
 load_dotenv(
-    os.path.join(BASE_DIR, ".env")
+    os.path.join(
+        BASE_DIR,
+        ".env"
+    )
 )
 
 
@@ -26,6 +31,7 @@ load_dotenv(
 # ============================================================
 
 app = Flask(__name__)
+
 CORS(app)
 
 
@@ -40,10 +46,33 @@ OPENROUTER_API_KEY = os.environ.get(
 client = None
 
 if OPENROUTER_API_KEY:
+
     client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
-        api_key=OPENROUTER_API_KEY
+        api_key=OPENROUTER_API_KEY,
     )
+
+
+# ============================================================
+# AI MODELS
+#
+# openrouter/free automatically selects an available free model.
+#
+# Specific models are kept as fallbacks in case the free router
+# or a selected provider is temporarily unavailable.
+# ============================================================
+
+AI_MODELS = [
+
+    "openrouter/free",
+
+    "google/gemma-4-31b-it:free",
+
+    "google/gemma-4-26b-a4b-it:free",
+
+    "qwen/qwen3.8-27b:free",
+
+]
 
 
 # ============================================================
@@ -124,9 +153,6 @@ except Exception as e:
 
 # ============================================================
 # MODEL FEATURE ORDER
-# IMPORTANT:
-# This MUST match the feature order used when the model
-# was trained.
 # ============================================================
 
 FEATURE_ORDER = [
@@ -204,10 +230,11 @@ def get_int(
         return default
 
 
-def encode_exercise(value):
+def encode_exercise(
+    value
+):
 
     if value is None:
-
         return 1
 
     if isinstance(
@@ -226,9 +253,7 @@ def encode_exercise(value):
     mapping = {
 
         "low": 0,
-
         "moderate": 1,
-
         "high": 2
 
     }
@@ -239,10 +264,11 @@ def encode_exercise(value):
     )
 
 
-def encode_diet(value):
+def encode_diet(
+    value
+):
 
     if value is None:
-
         return 0
 
     if isinstance(
@@ -261,11 +287,8 @@ def encode_diet(value):
     mapping = {
 
         "low carb": 0,
-
         "balanced": 1,
-
         "vegetarian": 2,
-
         "high protein": 3
 
     }
@@ -277,7 +300,7 @@ def encode_diet(value):
 
 
 # ============================================================
-# GET ACTUAL DECISION TREE FEATURE IMPORTANCE
+# MODEL FEATURE IMPORTANCE
 # ============================================================
 
 def get_model_feature_importance():
@@ -287,7 +310,6 @@ def get_model_feature_importance():
     try:
 
         if model is None:
-
             return importance
 
         values = getattr(
@@ -297,10 +319,11 @@ def get_model_feature_importance():
         )
 
         if values is None:
-
             return importance
 
-        if len(values) != len(FEATURE_ORDER):
+        if len(values) != len(
+            FEATURE_ORDER
+        ):
 
             print(
                 "Feature importance length does not match "
@@ -331,7 +354,7 @@ def get_model_feature_importance():
 
 
 # ============================================================
-# CONVERT FEATURE NAMES INTO USER-FRIENDLY NAMES
+# FRIENDLY FEATURE NAMES
 # ============================================================
 
 FRIENDLY_FEATURE_NAMES = {
@@ -395,10 +418,7 @@ def clean_ai_response(
         text
     ).strip()
 
-    # --------------------------------------------------------
-    # Remove <think>...</think> blocks
-    # --------------------------------------------------------
-
+    # Remove hidden reasoning blocks if a model returns them.
     text = re.sub(
         r"<think>.*?</think>",
         "",
@@ -406,10 +426,7 @@ def clean_ai_response(
         flags=re.IGNORECASE | re.DOTALL
     )
 
-    # --------------------------------------------------------
-    # Remove common reasoning prefixes
-    # --------------------------------------------------------
-
+    # Remove common reasoning headings.
     text = re.sub(
         r"^\s*(thinking|reasoning|analysis)\s*:\s*.*?\n",
         "",
@@ -417,10 +434,7 @@ def clean_ai_response(
         flags=re.IGNORECASE | re.DOTALL
     )
 
-    # --------------------------------------------------------
-    # Remove accidental "final answer" heading
-    # --------------------------------------------------------
-
+    # Remove final answer heading.
     text = re.sub(
         r"^\s*(final answer|final response)\s*:\s*",
         "",
@@ -493,10 +507,6 @@ def predict(
             }), 400
 
 
-        # ====================================================
-        # READ USER INPUT
-        # ====================================================
-
         age = get_int(
             data,
             "age"
@@ -556,19 +566,16 @@ def predict(
         missing = []
 
         if age is None:
-
             missing.append(
                 "age"
             )
 
         if cycle_length is None:
-
             missing.append(
                 "cycle_length"
             )
 
         if period_length is None:
-
             missing.append(
                 "period_length"
             )
@@ -625,7 +632,9 @@ def predict(
         features = pd.DataFrame(
             [raw]
         )[
+
             FEATURE_ORDER
+
         ]
 
 
@@ -648,7 +657,7 @@ def predict(
 
 
         # ====================================================
-        # ACTUAL MODEL FEATURE IMPORTANCE
+        # FEATURE IMPORTANCE
         # ====================================================
 
         raw_importance = (
@@ -657,7 +666,9 @@ def predict(
 
         factor_weights = {}
 
-        for feature, value in raw_importance.items():
+        for feature, value in (
+            raw_importance.items()
+        ):
 
             factor_weights[
                 friendly_feature_name(
@@ -686,7 +697,9 @@ def predict(
             try:
 
                 last_date = datetime.fromisoformat(
-                    last_period_date.replace(
+                    str(
+                        last_period_date
+                    ).replace(
                         "Z",
                         "+00:00"
                     )
@@ -714,10 +727,6 @@ def predict(
                     1,
                     current_day
                 )
-
-                # Period begins predicted cycle length
-                # days after the first day of the
-                # previous period.
 
                 expected_period_date = (
                     last_date.date()
@@ -779,17 +788,19 @@ def predict(
             )
 
 
-        if days_until_period == 0:
+        if days_until_period <= 0:
 
-            next_period_label = (
-                "Period due today"
-            )
+            if days_until_period == 0:
 
-        elif days_until_period < 0:
+                next_period_label = (
+                    "Period due today"
+                )
 
-            next_period_label = (
-                "Period may be due"
-            )
+            else:
+
+                next_period_label = (
+                    "Period may be due"
+                )
 
         else:
 
@@ -855,13 +866,6 @@ def predict(
 
         # ====================================================
         # PCOS INFORMATION
-        #
-        # IMPORTANT:
-        # The model is predicting cycle length.
-        # It is NOT a PCOS classifier.
-        #
-        # Therefore we do not call this a "PCOS risk".
-        # We simply return the user's supplied PCOS status.
         # ====================================================
 
         if pcos == 1:
@@ -1002,6 +1006,10 @@ def chat():
 
     try:
 
+        # ====================================================
+        # READ REQUEST
+        # ====================================================
+
         data = request.get_json()
 
         if not data:
@@ -1032,7 +1040,15 @@ def chat():
             }), 400
 
 
+        # ====================================================
+        # CHECK API KEY
+        # ====================================================
+
         if client is None:
+
+            print(
+                "OpenRouter API key is not configured."
+            )
 
             return jsonify({
 
@@ -1041,6 +1057,10 @@ def chat():
 
             }), 500
 
+
+        # ====================================================
+        # CONVERSATION HISTORY
+        # ====================================================
 
         history = data.get(
             "history",
@@ -1077,6 +1097,7 @@ def chat():
 
                     continue
 
+
                 role = message.get(
                     "role"
                 )
@@ -1112,6 +1133,10 @@ def chat():
                 })
 
 
+        # ====================================================
+        # CURRENT USER MESSAGE
+        # ====================================================
+
         messages.append({
 
             "role":
@@ -1129,78 +1154,256 @@ def chat():
         )
 
 
-        response = client.chat.completions.create(
-
-            model=
-                "google/gemma-4-26b-a4b-it:free",
-
-            messages=
-                messages,
-
-            temperature=
-                0.7,
-
-            max_tokens=
-                300
-
-        )
-
-
-        reply = (
-            response
-            .choices[0]
-            .message
-            .content
-        )
-
-
         # ====================================================
-        # CLEAN ANY REASONING LEAK
+        # TRY MULTIPLE AI MODELS
+        #
+        # First:
+        #   openrouter/free
+        #
+        # This automatically chooses an available free model.
+        #
+        # If that fails:
+        #   Gemma 31B
+        #   Gemma 26B
+        #   Qwen
         # ====================================================
 
-        reply = clean_ai_response(
-            reply
-        )
+        last_error = None
 
+
+        for model_name in AI_MODELS:
+
+            try:
+
+                print(
+                    "Trying Asha AI model:",
+                    model_name
+                )
+
+
+                response = client.chat.completions.create(
+
+                    model=model_name,
+
+                    messages=messages,
+
+                    temperature=0.7,
+
+                    max_tokens=300,
+
+                    extra_body={
+
+                        "reasoning": {
+
+                            "enabled":
+                                False
+
+                        }
+
+                    }
+
+                )
+
+
+                # =================================================
+                # CHECK RESPONSE
+                # =================================================
+
+                if response is None:
+
+                    raise Exception(
+                        "OpenRouter returned no response."
+                    )
+
+
+                if not response.choices:
+
+                    raise Exception(
+                        "OpenRouter returned no choices."
+                    )
+
+
+                message = response.choices[0].message
+
+
+                if message is None:
+
+                    raise Exception(
+                        "OpenRouter returned an empty message."
+                    )
+
+
+                reply = message.content
+
+
+                if not reply:
+
+                    raise Exception(
+                        "OpenRouter returned empty content."
+                    )
+
+
+                # =================================================
+                # CLEAN AI RESPONSE
+                # =================================================
+
+                reply = clean_ai_response(
+                    reply
+                )
+
+
+                if not reply:
+
+                    raise Exception(
+                        "AI response became empty after cleaning."
+                    )
+
+
+                # =================================================
+                # SUCCESS
+                # =================================================
+
+                print(
+                    "Asha AI model used:",
+                    model_name
+                )
+
+
+                print(
+                    "Asha AI reply:",
+                    reply
+                )
+
+
+                return jsonify({
+
+                    "reply":
+                        reply,
+
+                    "model":
+                        model_name
+
+                }), 200
+
+
+            except Exception as model_error:
+
+                last_error = model_error
+
+                error_text = str(
+                    model_error
+                )
+
+
+                print(
+                    "Asha model failed:",
+                    model_name
+                )
+
+                print(
+                    "Asha model error:",
+                    error_text
+                )
+
+
+                # =================================================
+                # RATE LIMIT / TEMPORARY ERROR
+                # =================================================
+
+                if (
+
+                    "429" in error_text
+
+                    or
+
+                    "rate limit"
+                    in
+                    error_text.lower()
+
+                    or
+
+                    "rate-limited"
+                    in
+                    error_text.lower()
+
+                    or
+
+                    "temporarily"
+                    in
+                    error_text.lower()
+
+                ):
+
+                    print(
+                        "Model appears rate-limited."
+                    )
+
+                    print(
+                        "Trying next Asha AI model..."
+                    )
+
+
+                continue
+
+
+        # ========================================================
+        # ALL MODELS FAILED
+        # ========================================================
 
         print(
-            "Asha AI reply:",
-            reply
+            "All Asha AI models failed."
         )
+
+
+        if last_error:
+
+            print(
+                "Last Asha AI error:",
+                repr(last_error)
+            )
 
 
         return jsonify({
 
-            "reply":
-                reply
+            "error":
+                "Asha AI is temporarily unavailable.",
 
-        })
+            "details":
+                "All available AI models were unavailable. "
+                "Please try again in a moment."
+
+        }), 503
 
 
     except Exception as e:
 
         print(
-            "OpenRouter error:",
+            "Asha chat server error:",
             repr(e)
         )
+
 
         return jsonify({
 
             "error":
-                "Could not reach Asha AI",
+                "Could not reach Asha AI.",
 
             "details":
-                str(e)
+                "The AI service encountered a temporary error."
 
-        }), 500
+        }), 503
 
 
 # ============================================================
 # NOTIFICATIONS
+#
+# Flutter currently sends POST requests.
+# We accept BOTH GET and POST.
 # ============================================================
 
 @app.route(
-    "/notifications/<user_id>"
+    "/notifications/<user_id>",
+    methods=["GET", "POST"]
 )
 def notifications(
     user_id
@@ -1265,6 +1468,7 @@ def notifications(
 
 KURLA_MIN_LAT = 19.045
 KURLA_MAX_LAT = 19.085
+
 KURLA_MIN_LNG = 72.865
 KURLA_MAX_LNG = 72.910
 
@@ -1459,7 +1663,8 @@ def get_kurla_fallback(
 
 
 @app.route(
-    "/doctors"
+    "/doctors",
+    methods=["GET"]
 )
 def doctors():
 
@@ -1517,7 +1722,12 @@ def doctors():
             lng
         )
 
-    except ValueError:
+    except (
+
+        TypeError,
+        ValueError
+
+    ):
 
         return jsonify({
 
@@ -1532,6 +1742,10 @@ def doctors():
 
     SEARCH_RADIUS = 10000
 
+
+    # ========================================================
+    # OVERPASS QUERY
+    # ========================================================
 
     if selected_type == "hospital":
 
@@ -1605,6 +1819,10 @@ out center;
     last_error = None
 
 
+    # ========================================================
+    # TRY MULTIPLE OVERPASS SERVERS
+    # ========================================================
+
     for server in overpass_servers:
 
         try:
@@ -1613,6 +1831,7 @@ out center;
                 "Trying Overpass server:",
                 server
             )
+
 
             response = requests.post(
 
@@ -1673,6 +1892,10 @@ out center;
                 e
             )
 
+
+    # ========================================================
+    # PARSE RESULTS
+    # ========================================================
 
     results = []
 
@@ -1753,8 +1976,10 @@ out center;
                 )
 
             except (
+
                 TypeError,
                 ValueError
+
             ):
 
                 continue
@@ -1766,23 +1991,33 @@ out center;
                     "name"
                 )
 
-                or tags.get(
+                or
+
+                tags.get(
                     "name:en"
                 )
 
-                or tags.get(
+                or
+
+                tags.get(
                     "official_name"
                 )
 
-                or tags.get(
+                or
+
+                tags.get(
                     "operator"
                 )
 
-                or tags.get(
+                or
+
+                tags.get(
                     "brand"
                 )
 
-                or "Healthcare provider"
+                or
+
+                "Healthcare provider"
 
             )
 
@@ -1955,6 +2190,10 @@ out center;
             })
 
 
+    # ========================================================
+    # REMOVE DUPLICATES
+    # ========================================================
+
     unique_results = []
 
     seen = set()
@@ -1964,7 +2203,9 @@ out center;
 
         key = (
 
-            result["name"].lower().strip(),
+            result["name"]
+            .lower()
+            .strip(),
 
             round(
                 result["lat"],
@@ -1999,11 +2240,17 @@ out center;
     source = "OpenStreetMap"
 
 
+    # ========================================================
+    # KURLA DEMO FALLBACK
+    # ========================================================
+
     if not unique_results:
 
         if is_kurla_area(
+
             latitude,
             longitude
+
         ):
 
             unique_results = (
@@ -2024,16 +2271,29 @@ out center;
         else:
 
             print(
-                "No live results and location "
-                "is outside the ASHA Kurla demo area."
+                "No live healthcare results."
             )
+
+            if last_error:
+
+                print(
+                    "Last Overpass error:",
+                    last_error
+                )
 
 
     print(
-        f"Returning {len(unique_results)} "
+        f"Returning "
+        f"{len(unique_results)} "
         f"{selected_type} results."
     )
 
+
+    # IMPORTANT:
+    # Always return HTTP 200 when the location itself
+    # was valid. Flutter can then display a proper
+    # "no facilities found" message instead of saying
+    # the healthcare service is unavailable.
 
     return jsonify({
 
@@ -2060,7 +2320,8 @@ out center;
 # ============================================================
 
 @app.route(
-    "/geocode"
+    "/geocode",
+    methods=["GET"]
 )
 def geocode():
 

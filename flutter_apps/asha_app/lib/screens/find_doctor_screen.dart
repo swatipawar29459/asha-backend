@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -58,25 +57,31 @@ class _FindDoctorScreenState
       LocationPermission permission =
           await Geolocator.checkPermission();
 
-      if (permission == LocationPermission.denied) {
+      if (permission ==
+          LocationPermission.denied) {
         permission =
             await Geolocator.requestPermission();
       }
 
-      if (permission == LocationPermission.denied) {
+      if (permission ==
+          LocationPermission.denied) {
         throw Exception(
           'Location permission denied. Please allow location access.',
         );
       }
 
-      if (permission == LocationPermission.deniedForever) {
+      if (permission ==
+          LocationPermission.deniedForever) {
         throw Exception(
           'Location permission is permanently denied. Please enable it from phone Settings.',
         );
       }
 
       final position =
-    await Geolocator.getCurrentPosition();
+          await Geolocator.getCurrentPosition(
+        desiredAccuracy:
+            LocationAccuracy.high,
+      );
 
       debugPrint(
         'Current location: '
@@ -98,24 +103,10 @@ class _FindDoctorScreenState
       // FETCH NEARBY HEALTHCARE
       // ----------------------------------------------------------
 
-      final doctors =
-          await ApiService.findDoctors(
+      await _loadDoctors(
         position.latitude,
         position.longitude,
-        type: '',
       );
-
-      if (!mounted) return;
-
-      setState(() {
-        results = doctors;
-        loading = false;
-
-        if (doctors.isEmpty) {
-          error =
-              'No nearby medical facilities were found.';
-        }
-      });
     } catch (e) {
       debugPrint(
         'Find doctor error: $e',
@@ -137,6 +128,61 @@ class _FindDoctorScreenState
   }
 
   // ============================================================
+  // LOAD DOCTORS
+  // ============================================================
+
+  Future<void> _loadDoctors(
+    double lat,
+    double lng,
+  ) async {
+    try {
+      debugPrint(
+        'Finding healthcare providers at: '
+        '$lat, $lng',
+      );
+
+      final doctors =
+          await ApiService.findDoctors(
+        lat,
+        lng,
+        type: '',
+      );
+
+      debugPrint(
+        'Healthcare providers returned: '
+        '${doctors.length}',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        results = doctors;
+        loading = false;
+
+        if (doctors.isEmpty) {
+          error =
+              'Location found, but no nearby medical facilities were returned for this location.';
+        } else {
+          error = null;
+        }
+      });
+    } catch (e) {
+      debugPrint(
+        'Healthcare provider search error: $e',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+
+        error =
+            'The location was found, but healthcare providers could not be loaded right now. Please try again.';
+      });
+    }
+  }
+
+  // ============================================================
   // MANUAL ADDRESS SEARCH
   // ============================================================
 
@@ -146,7 +192,8 @@ class _FindDoctorScreenState
 
     if (address.isEmpty) {
       setState(() {
-        error = 'Please enter a location.';
+        error =
+            'Please enter a location.';
       });
       return;
     }
@@ -196,24 +243,10 @@ class _FindDoctorScreenState
       // FETCH NEARBY HEALTHCARE
       // ----------------------------------------------------------
 
-      final doctors =
-          await ApiService.findDoctors(
+      await _loadDoctors(
         lat,
         lng,
-        type: '',
       );
-
-      if (!mounted) return;
-
-      setState(() {
-        results = doctors;
-        loading = false;
-
-        if (doctors.isEmpty) {
-          error =
-              'Location found, but no nearby medical facilities were found.';
-        }
-      });
     } catch (e) {
       debugPrint(
         'Address search error: $e',
@@ -250,7 +283,8 @@ class _FindDoctorScreenState
             'Search for a location to see the map',
             style: TextStyle(
               fontSize: 13,
-              fontWeight: FontWeight.w500,
+              fontWeight:
+                  FontWeight.w500,
             ),
           ),
         ),
@@ -276,10 +310,6 @@ class _FindDoctorScreenState
               userAgentPackageName:
                   'com.example.asha_app',
             ),
-
-            // ----------------------------------------------------
-            // MARKERS
-            // ----------------------------------------------------
 
             MarkerLayer(
               markers: [
@@ -713,4 +743,3 @@ class _FindDoctorScreenState
     super.dispose();
   }
 }
-
