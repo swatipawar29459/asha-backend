@@ -743,7 +743,7 @@ def chat():
         response = client.chat.completions.create(
 
             model=
-                "google/gemma-4-26b-a4b-it:free",
+                "qwen/qwen3.8-27b:free",
 
             messages=
                 messages,
