@@ -1,3 +1,4 @@
+
 class Doctor {
   final String name;
   final String type;
@@ -21,8 +22,10 @@ class Doctor {
 
   factory Doctor.fromJson(Map<String, dynamic> json) {
     return Doctor(
-      name: json['name']?.toString() ?? 'Healthcare provider',
-      type: json['type']?.toString() ?? 'doctor',
+      name: json['name']?.toString().trim().isNotEmpty == true
+          ? json['name'].toString().trim()
+          : 'Healthcare provider',
+      type: json['type']?.toString() ?? 'healthcare',
       address: json['address']?.toString() ?? '',
       phone: _optionalString(json['phone']),
       website: _optionalString(json['website']),
@@ -37,9 +40,9 @@ class Doctor {
       return null;
     }
 
-    final String text = value.toString().trim();
+    final text = value.toString().trim();
 
-    if (text.isEmpty) {
+    if (text.isEmpty || text == 'null') {
       return null;
     }
 
@@ -51,6 +54,9 @@ class Doctor {
       return value.toDouble();
     }
 
-    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+    return double.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0.0;
   }
 }

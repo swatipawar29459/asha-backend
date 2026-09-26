@@ -106,37 +106,72 @@ class ApiService {
   }
 
   // ==================================================
-  // AI CHAT
-  // ==================================================
+// AI CHAT
+// ==================================================
 
-  static Future<String> sendChatMessage(
-    String message, {
-    List<Map<String, String>> history = const [],
-  }) async {
-    final response = await http.post(
-      Uri.parse(
-        '$baseUrl/chat',
-      ),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'message': message,
-        'history': history,
-      }),
-    );
+static Future<String> sendChatMessage(
+  String message, {
+  List<Map<String, String>> history = const [],
+}) async {
+  try {
+    print('--------------------------------');
+    print('ASHA CHAT REQUEST');
+    print('Message: $message');
+    print('History: $history');
+    print('URL: $baseUrl/chat');
+
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/chat'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode({
+            'message': message,
+            'history': history,
+          }),
+        )
+        .timeout(
+          const Duration(seconds: 30),
+        );
+
+    print('ASHA CHAT STATUS: ${response.statusCode}');
+    print('ASHA CHAT RESPONSE: ${response.body}');
 
     if (response.statusCode != 200) {
       throw Exception(
-        'Could not reach Asha AI',
+        'Asha AI error ${response.statusCode}: ${response.body}',
       );
     }
 
     final data = jsonDecode(response.body);
 
-    return data['reply']?.toString() ??
-        'Sorry, I could not respond.';
+    if (data is Map<String, dynamic>) {
+      final reply = data['reply']?.toString();
+
+      if (reply != null && reply.trim().isNotEmpty) {
+        return reply;
+      }
+
+      if (data['error'] != null) {
+        throw Exception(
+          'Asha AI error: ${data['error']}',
+        );
+      }
+    }
+
+    throw Exception(
+      'Asha returned an empty response.',
+    );
+  } catch (e) {
+    print('--------------------------------');
+    print('ASHA CHAT ERROR: $e');
+    print('--------------------------------');
+
+    rethrow;
   }
+}
 
   // ==================================================
   // NOTIFICATIONS

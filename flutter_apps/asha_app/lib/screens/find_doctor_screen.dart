@@ -1,16 +1,17 @@
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../theme/asha_theme.dart';
+import '../services/api_service.dart';
 import '../models/doctor.dart';
 
 class FindDoctorScreen extends StatefulWidget {
-  const FindDoctorScreen({super.key});
+  const FindDoctorScreen({
+    super.key,
+  });
 
   @override
   State<FindDoctorScreen> createState() =>
@@ -19,86 +20,39 @@ class FindDoctorScreen extends StatefulWidget {
 
 class _FindDoctorScreenState
     extends State<FindDoctorScreen> {
-  static const String baseUrl =
-      'https://asha-backend-1.onrender.com';
-
-  final TextEditingController _locationController =
+  final TextEditingController _addressController =
       TextEditingController();
 
-  final MapController _mapController =
-      MapController();
+  List<Doctor> results = [];
 
-  bool _mapReady = false;
+  LatLng? selectedLocation;
 
-  double? _pendingMapLatitude;
-  double? _pendingMapLongitude;
+  bool loading = false;
 
-  String selectedType = 'doctor';
-
-  double? latitude;
-  double? longitude;
-
-  String locationText = '';
-
-  String sourceText = '';
-
-  List<Doctor> doctors = [];
-
-  bool loadingLocation = false;
-  bool loadingDoctors = false;
-
-  String? errorMessage;
-
-  @override
-  void dispose() {
-    _locationController.dispose();
-    super.dispose();
-  }
-
-  // ============================================================
-  // MAP
-  // ============================================================
-
-  void moveMapTo(
-    double lat,
-    double lng,
-    double zoom,
-  ) {
-    _pendingMapLatitude = lat;
-    _pendingMapLongitude = lng;
-
-    if (!_mapReady) {
-      return;
-    }
-
-    _mapController.move(
-      LatLng(lat, lng),
-      zoom,
-    );
-  }
+  String? error;
 
   // ============================================================
   // CURRENT LOCATION
   // ============================================================
 
-  Future<void> useCurrentLocation() async {
+  Future<void> _useCurrentLocation() async {
+    if (loading) return;
+
     setState(() {
-      loadingLocation = true;
-      errorMessage = null;
-      sourceText = '';
+      loading = true;
+      error = null;
+      results = [];
+      selectedLocation = null;
     });
 
     try {
-      final bool serviceEnabled =
+      final serviceEnabled =
           await Geolocator.isLocationServiceEnabled();
 
       if (!serviceEnabled) {
-        setState(() {
-          loadingLocation = false;
-          errorMessage =
-              'Please turn on location services and try again.';
-        });
-        return;
+        throw Exception(
+          'Location services are disabled. Please turn on GPS/location.',
+        );
       }
 
       LocationPermission permission =
@@ -110,636 +64,378 @@ class _FindDoctorScreenState
       }
 
       if (permission == LocationPermission.denied) {
-        setState(() {
-          loadingLocation = false;
-          errorMessage =
-              'Location permission was denied.';
-        });
-        return;
-      }
-
-      if (permission ==
-          LocationPermission.deniedForever) {
-        setState(() {
-          loadingLocation = false;
-          errorMessage =
-              'Location permission is permanently denied. Please enable it from app settings.';
-        });
-        return;
-      }
-
-      final Position position =
-          await Geolocator.getCurrentPosition(
-        desiredAccuracy:
-            LocationAccuracy.high,
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        latitude = position.latitude;
-        longitude = position.longitude;
-        locationText = 'Current location';
-        loadingLocation = false;
-      });
-
-      moveMapTo(
-        position.latitude,
-        position.longitude,
-        14,
-      );
-
-      await findHealthcare(
-        position.latitude,
-        position.longitude,
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        loadingLocation = false;
-        errorMessage =
-            'Could not get your current location.';
-      });
-    }
-  }
-
-  // ============================================================
-  // SEARCH LOCATION
-  // ============================================================
-
-  Future<void> searchLocation() async {
-    final String address =
-        _locationController.text.trim();
-
-    if (address.isEmpty) {
-      setState(() {
-        errorMessage =
-            'Please enter a location.';
-      });
-      return;
-    }
-
-    setState(() {
-      loadingLocation = true;
-      errorMessage = null;
-      sourceText = '';
-      doctors = [];
-    });
-
-    try {
-      final Uri uri = Uri.https(
-        'nominatim.openstreetmap.org',
-        '/search',
-        {
-          'q':
-              '$address, Mumbai, India',
-          'format':
-              'json',
-          'limit':
-              '1',
-        },
-      );
-
-      final response = await http.get(
-        uri,
-        headers: {
-          'User-Agent':
-              'Asha-Womens-Health-App/1.0',
-          'Accept':
-              'application/json',
-        },
-      ).timeout(
-        const Duration(seconds: 15),
-      );
-
-      if (response.statusCode != 200) {
         throw Exception(
-          'Location search failed',
+          'Location permission denied. Please allow location access.',
         );
       }
 
-      final List<dynamic> results =
-          jsonDecode(response.body);
-
-      if (results.isEmpty) {
-        setState(() {
-          loadingLocation = false;
-          errorMessage =
-              'Location not found. Try Kurla East or Nehru Nagar, Kurla.';
-        });
-        return;
-      }
-
-      final Map<String, dynamic> decoded =
-          Map<String, dynamic>.from(
-        results.first,
-      );
-
-      final double newLat =
-          double.parse(
-        decoded['lat'].toString(),
-      );
-
-      final double newLng =
-          double.parse(
-        decoded['lon'].toString(),
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        latitude = newLat;
-        longitude = newLng;
-
-        locationText =
-            decoded['display_name']
-                    ?.toString() ??
-                address;
-
-        loadingLocation = false;
-      });
-
-      moveMapTo(
-        newLat,
-        newLng,
-        14,
-      );
-
-      await findHealthcare(
-        newLat,
-        newLng,
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        loadingLocation = false;
-        errorMessage =
-            'Could not search this location.';
-      });
-    }
-  }
-
-  // ============================================================
-  // HEALTHCARE SEARCH
-  // ============================================================
-
-  Future<void> findHealthcare(
-    double lat,
-    double lng,
-  ) async {
-    setState(() {
-      loadingDoctors = true;
-      errorMessage = null;
-      sourceText = '';
-      doctors = [];
-    });
-
-    try {
-      final Uri uri = Uri.parse(
-        '$baseUrl/doctors'
-        '?lat=$lat'
-        '&lng=$lng'
-        '&type=$selectedType',
-      );
-
-      final response =
-          await http.get(uri).timeout(
-        const Duration(seconds: 55),
-      );
-
-      if (response.statusCode != 200) {
+      if (permission == LocationPermission.deniedForever) {
         throw Exception(
-          'Server returned ${response.statusCode}',
+          'Location permission is permanently denied. Please enable it from phone Settings.',
         );
       }
 
-      final Map<String, dynamic> data =
-          jsonDecode(response.body);
+      final position =
+    await Geolocator.getCurrentPosition();
 
-      final List<dynamic> results =
-          data['results'] is List
-              ? data['results']
-              : [];
+      debugPrint(
+        'Current location: '
+        '${position.latitude}, ${position.longitude}',
+      );
 
-      final List<Doctor> loadedDoctors =
-          results
-              .map(
-                (item) =>
-                    Doctor.fromJson(
-                  Map<String, dynamic>.from(
-                    item,
-                  ),
-                ),
-              )
-              .where(
-                (doctor) =>
-                    doctor.lat != 0 &&
-                    doctor.lng != 0,
-              )
-              .toList();
-
-      final String source =
-          data['source']?.toString() ??
-              'Healthcare search';
+      final location = LatLng(
+        position.latitude,
+        position.longitude,
+      );
 
       if (!mounted) return;
 
       setState(() {
-        doctors = loadedDoctors;
-        loadingDoctors = false;
-        sourceText = source;
+        selectedLocation = location;
+      });
 
-        if (loadedDoctors.isEmpty) {
-          errorMessage =
-              'No $selectedType facilities were found at this location.';
+      // ----------------------------------------------------------
+      // FETCH NEARBY HEALTHCARE
+      // ----------------------------------------------------------
+
+      final doctors =
+          await ApiService.findDoctors(
+        position.latitude,
+        position.longitude,
+        type: '',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        results = doctors;
+        loading = false;
+
+        if (doctors.isEmpty) {
+          error =
+              'No nearby medical facilities were found.';
         }
       });
     } catch (e) {
+      debugPrint(
+        'Find doctor error: $e',
+      );
+
       if (!mounted) return;
 
       setState(() {
-        loadingDoctors = false;
-        errorMessage =
-            'Could not load healthcare providers. Please try again.';
+        loading = false;
+
+        error = e
+            .toString()
+            .replaceFirst(
+              'Exception: ',
+              '',
+            );
       });
     }
   }
 
   // ============================================================
-  // CATEGORY
+  // MANUAL ADDRESS SEARCH
   // ============================================================
 
-  Future<void> changeType(
-    String type,
-  ) async {
-    if (selectedType == type) {
+  Future<void> _searchByAddress() async {
+    final address =
+        _addressController.text.trim();
+
+    if (address.isEmpty) {
+      setState(() {
+        error = 'Please enter a location.';
+      });
       return;
     }
 
+    if (loading) return;
+
+    FocusScope.of(context).unfocus();
+
     setState(() {
-      selectedType = type;
+      loading = true;
+      error = null;
+      results = [];
+      selectedLocation = null;
     });
 
-    if (latitude != null &&
-        longitude != null) {
-      await findHealthcare(
-        latitude!,
-        longitude!,
+    try {
+      debugPrint(
+        'Searching address: $address',
       );
+
+      final location =
+          await ApiService.geocodeAddress(
+        address,
+      );
+
+      final lat =
+          (location['lat'] as num).toDouble();
+
+      final lng =
+          (location['lng'] as num).toDouble();
+
+      debugPrint(
+        'Geocoded location: $lat, $lng',
+      );
+
+      final searchedLocation =
+          LatLng(lat, lng);
+
+      if (!mounted) return;
+
+      setState(() {
+        selectedLocation =
+            searchedLocation;
+      });
+
+      // ----------------------------------------------------------
+      // FETCH NEARBY HEALTHCARE
+      // ----------------------------------------------------------
+
+      final doctors =
+          await ApiService.findDoctors(
+        lat,
+        lng,
+        type: '',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        results = doctors;
+        loading = false;
+
+        if (doctors.isEmpty) {
+          error =
+              'Location found, but no nearby medical facilities were found.';
+        }
+      });
+    } catch (e) {
+      debugPrint(
+        'Address search error: $e',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+
+        error =
+            'Could not find this location. Please try a more specific area or city.';
+      });
     }
   }
 
   // ============================================================
-  // MAP MARKERS
+  // MAP
   // ============================================================
 
-  List<Marker> getMarkers() {
-    final List<Marker> markers = [];
-
-    if (latitude != null &&
-        longitude != null) {
-      markers.add(
-        Marker(
-          point: LatLng(
-            latitude!,
-            longitude!,
-          ),
-          width: 40,
-          height: 40,
-          child: const Icon(
-            Icons.my_location,
-            color: Color(0xFFD8754E),
-            size: 30,
-          ),
+  Widget _buildMap() {
+    if (selectedLocation == null) {
+      return Container(
+        height: 280,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color:
+              AshaColors.peach.withOpacity(0.25),
+          borderRadius:
+              BorderRadius.circular(20),
         ),
-      );
-    }
-
-    for (final Doctor doctor in doctors) {
-      markers.add(
-        Marker(
-          point: LatLng(
-            doctor.lat,
-            doctor.lng,
-          ),
-          width: 45,
-          height: 45,
-          child: GestureDetector(
-            onTap: () {
-              if (!_mapReady) {
-                return;
-              }
-
-              _mapController.move(
-                LatLng(
-                  doctor.lat,
-                  doctor.lng,
-                ),
-                16,
-              );
-            },
-            child: const Icon(
-              Icons.location_on,
-              color: Color(0xFFD8754E),
-              size: 40,
+        child: const Center(
+          child: Text(
+            'Search for a location to see the map',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),
       );
     }
 
-    return markers;
+    return SizedBox(
+      height: 280,
+      width: double.infinity,
+      child: ClipRRect(
+        borderRadius:
+            BorderRadius.circular(20),
+        child: FlutterMap(
+          options: MapOptions(
+            initialCenter:
+                selectedLocation!,
+            initialZoom: 14,
+          ),
+          children: [
+            TileLayer(
+              urlTemplate:
+                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName:
+                  'com.example.asha_app',
+            ),
+
+            // ----------------------------------------------------
+            // MARKERS
+            // ----------------------------------------------------
+
+            MarkerLayer(
+              markers: [
+                // User/search location
+                Marker(
+                  point:
+                      selectedLocation!,
+                  width: 50,
+                  height: 50,
+                  child: const Icon(
+                    Icons.location_pin,
+                    size: 42,
+                    color: Colors.blue,
+                  ),
+                ),
+
+                // Healthcare facilities
+                ...results
+                    .where(
+                      (doctor) =>
+                          doctor.lat != 0 &&
+                          doctor.lng != 0,
+                    )
+                    .map(
+                  (doctor) => Marker(
+                    point: LatLng(
+                      doctor.lat,
+                      doctor.lng,
+                    ),
+                    width: 45,
+                    height: 45,
+                    child: const Icon(
+                      Icons.location_on,
+                      size: 38,
+                      color: Colors.red,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const RichAttributionWidget(
+              attributions: [
+                TextSourceAttribution(
+                  'OpenStreetMap contributors',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ============================================================
-  // DIRECTIONS
+  // FACILITY CARD
   // ============================================================
 
-  Future<void> openDirections(
-    Doctor doctor,
-  ) async {
-    final Uri uri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1'
-      '&destination=${doctor.lat},${doctor.lng}',
-    );
-
-    await launchUrl(
-      uri,
-      mode:
-          LaunchMode.externalApplication,
-    );
-  }
-
-  // ============================================================
-  // CALL
-  // ============================================================
-
-  Future<void> callDoctor(
-    String phone,
-  ) async {
-    final Uri uri = Uri.parse(
-      'tel:$phone',
-    );
-
-    await launchUrl(uri);
-  }
-
-  // ============================================================
-  // WEBSITE
-  // ============================================================
-
-  Future<void> openWebsite(
-    String website,
-  ) async {
-    String url = website.trim();
-
-    if (!url.startsWith('http://') &&
-        !url.startsWith('https://')) {
-      url = 'https://$url';
-    }
-
-    await launchUrl(
-      Uri.parse(url),
-      mode:
-          LaunchMode.externalApplication,
-    );
-  }
-
-  // ============================================================
-  // DOCTOR CARD
-  // ============================================================
-
-  Widget buildDoctorCard(
+  Widget _doctorCard(
     Doctor doctor,
   ) {
-    return Card(
-      margin:
-          const EdgeInsets.only(
-        bottom: 14,
-      ),
-      elevation: 2,
-      shape:
-          RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(18),
-      ),
-      child: Padding(
-        padding:
-            const EdgeInsets.all(16),
-        child: Column(
+    IconData icon;
+
+    final type =
+        doctor.type.toLowerCase();
+
+    if (type == 'hospital') {
+      icon =
+          Icons.local_hospital_rounded;
+    } else if (type == 'clinic') {
+      icon =
+          Icons.medical_services_rounded;
+    } else {
+      icon =
+          Icons.health_and_safety_rounded;
+    }
+
+    return Padding(
+      padding:
+          const EdgeInsets.only(bottom: 10),
+      child: AshaCard(
+        child: Row(
           crossAxisAlignment:
               CrossAxisAlignment.start,
           children: [
-
-            Row(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        const Color(
-                      0xFFFFE9DC,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      14,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons
-                        .local_hospital_outlined,
-                    color:
-                        Color(0xFFD8754E),
-                  ),
-                ),
-
-                const SizedBox(
-                  width: 12,
-                ),
-
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-
-                      Text(
-                        doctor.name,
-                        style:
-                            const TextStyle(
-                          fontSize: 16,
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
-                      ),
-
-                      const SizedBox(
-                        height: 4,
-                      ),
-
-                      Text(
-                        doctor.type
-                            .toUpperCase(),
-                        style:
-                            const TextStyle(
-                          fontSize: 11,
-                          color:
-                              Color(
-                            0xFFD8754E,
-                          ),
-                          fontWeight:
-                              FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color:
+                    AshaColors.peach,
+                borderRadius:
+                    BorderRadius.circular(14),
+              ),
+              child: Icon(
+                icon,
+                color:
+                    AshaColors.coral,
+              ),
             ),
-
-            if (doctor.address.isNotEmpty)
-              ...[
-
-                const SizedBox(
-                  height: 12,
-                ),
-
-                Row(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-
-                    const Icon(
-                      Icons
-                          .location_on_outlined,
-                      size: 19,
-                      color:
-                          Colors.grey,
-                    ),
-
-                    const SizedBox(
-                      width: 7,
-                    ),
-
-                    Expanded(
-                      child: Text(
-                        doctor.address,
-                        style:
-                            const TextStyle(
-                          fontSize: 13,
-                          color:
-                              Colors.black87,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-
-            if (doctor.openingHours !=
-                null)
-              ...[
-
-                const SizedBox(
-                  height: 8,
-                ),
-
-                Row(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-
-                    const Icon(
-                      Icons.access_time,
-                      size: 18,
-                      color:
-                          Colors.grey,
-                    ),
-
-                    const SizedBox(
-                      width: 7,
-                    ),
-
-                    Expanded(
-                      child: Text(
-                        doctor
-                            .openingHours!,
-                        style:
-                            const TextStyle(
-                          fontSize: 13,
-                          color:
-                              Colors.black87,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
 
             const SizedBox(
-              height: 14,
+              width: 12,
             ),
 
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      openDirections(
-                    doctor,
-                  ),
-                  icon: const Icon(
-                    Icons
-                        .directions_outlined,
-                    size: 18,
-                  ),
-                  label:
-                      const Text(
-                    'Directions',
-                  ),
-                ),
-
-                if (doctor.phone != null)
-                  OutlinedButton.icon(
-                    onPressed: () =>
-                        callDoctor(
-                      doctor.phone!,
-                    ),
-                    icon: const Icon(
-                      Icons.call_outlined,
-                      size: 18,
-                    ),
-                    label:
-                        const Text(
-                      'Call',
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    doctor.name,
+                    style:
+                        const TextStyle(
+                      fontWeight:
+                          FontWeight.bold,
+                      fontSize: 13,
                     ),
                   ),
 
-                if (doctor.website != null)
-                  OutlinedButton.icon(
-                    onPressed: () =>
-                        openWebsite(
-                      doctor.website!,
-                    ),
-                    icon: const Icon(
-                      Icons.language,
-                      size: 18,
-                    ),
-                    label:
-                        const Text(
-                      'Website',
-                    ),
+                  const SizedBox(
+                    height: 5,
                   ),
-              ],
+
+                  if (doctor.address
+                      .isNotEmpty)
+                    Text(
+                      doctor.address,
+                      maxLines: 2,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style:
+                          TextStyle(
+                        fontSize: 11,
+                        color:
+                            AshaColors.slate,
+                      ),
+                    ),
+
+                  if (doctor.openingHours !=
+                      null) ...[
+                    const SizedBox(
+                      height: 5,
+                    ),
+                    Text(
+                      doctor.openingHours!,
+                      style:
+                          TextStyle(
+                        fontSize: 10,
+                        color:
+                            AshaColors.slate,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ],
         ),
@@ -756,550 +452,265 @@ class _FindDoctorScreenState
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFFFF8F3),
-
       appBar: AppBar(
-        title: const Text(
-          'Find a Doctor',
-          style: TextStyle(
-            fontWeight:
-                FontWeight.bold,
-          ),
-        ),
         backgroundColor:
-            const Color(0xFFFFF8F3),
+            Colors.transparent,
         elevation: 0,
-        foregroundColor:
-            Colors.black87,
+        title:
+            const Text('Find a doctor'),
       ),
 
       body: SafeArea(
-        child: Column(
-          children: [
+        child: Padding(
+          padding:
+              const EdgeInsets.all(20),
 
-            Padding(
-              padding:
-                  const EdgeInsets.fromLTRB(
-                16,
-                12,
-                16,
-                8,
-              ),
-              child: Column(
-                children: [
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
 
-                  TextField(
-                    controller:
-                        _locationController,
-                    textInputAction:
-                        TextInputAction.search,
-                    onSubmitted: (_) =>
-                        searchLocation(),
-                    decoration:
-                        InputDecoration(
-                      hintText:
-                          'Enter area, city or landmark',
-                      prefixIcon:
-                          const Icon(
-                        Icons.search,
-                      ),
-                      suffixIcon:
-                          IconButton(
-                        onPressed:
-                            loadingLocation
-                                ? null
-                                : searchLocation,
-                        icon:
-                            const Icon(
-                          Icons.arrow_forward,
-                        ),
-                      ),
-                      filled: true,
-                      fillColor:
-                          Colors.white,
-                      border:
-                          OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                          16,
-                        ),
-                        borderSide:
-                            BorderSide.none,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(
-                    height: 10,
-                  ),
-
-                  SizedBox(
-                    width:
-                        double.infinity,
-                    child:
-                        OutlinedButton.icon(
-                      onPressed:
-                          loadingLocation
-                              ? null
-                              : useCurrentLocation,
-                      icon:
-                          loadingLocation
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child:
-                                      CircularProgressIndicator(
-                                    strokeWidth:
-                                        2,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons
-                                      .my_location,
-                                ),
-                      label:
-                          const Text(
-                        'Use my current location',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // ==================================================
-            // CATEGORY BUTTONS
-            // ==================================================
-
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 6,
-              ),
-              child: Row(
-                children: [
-
-                  Expanded(
-                    child:
-                        _categoryButton(
-                      'doctor',
-                      'Doctors',
-                      Icons
-                          .person_outline,
-                    ),
-                  ),
-
-                  const SizedBox(
-                    width: 8,
-                  ),
-
-                  Expanded(
-                    child:
-                        _categoryButton(
-                      'clinic',
-                      'Clinics',
-                      Icons
-                          .medical_services_outlined,
-                    ),
-                  ),
-
-                  const SizedBox(
-                    width: 8,
-                  ),
-
-                  Expanded(
-                    child:
-                        _categoryButton(
-                      'hospital',
-                      'Hospitals',
-                      Icons
-                          .local_hospital_outlined,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // ==================================================
-            // LOCATION
-            // ==================================================
-
-            if (locationText.isNotEmpty)
-              Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(
-                  16,
-                  4,
-                  16,
-                  4,
-                ),
-                child: Row(
-                  children: [
-
-                    const Icon(
-                      Icons.location_on,
-                      size: 17,
-                      color:
-                          Color(0xFFD8754E),
-                    ),
-
-                    const SizedBox(
-                      width: 5,
-                    ),
-
-                    Expanded(
-                      child: Text(
-                        locationText,
-                        maxLines: 2,
-                        overflow:
-                            TextOverflow.ellipsis,
-                        style:
-                            const TextStyle(
-                          fontSize: 12,
-                          color:
-                              Colors.black54,
-                        ),
-                      ),
-                    ),
-                  ],
+            children: [
+              const Text(
+                'Find nearby doctors, clinics and hospitals',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight:
+                      FontWeight.bold,
                 ),
               ),
 
-            // ==================================================
-            // SOURCE
-            // ==================================================
+              const SizedBox(
+                height: 14,
+              ),
 
-            if (sourceText.isNotEmpty)
-              Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(
-                  16,
-                  2,
-                  16,
-                  6,
+              // ==================================================
+              // ADDRESS SEARCH
+              // ==================================================
+
+              TextField(
+                controller:
+                    _addressController,
+
+                textInputAction:
+                    TextInputAction.search,
+
+                decoration:
+                    InputDecoration(
+                  hintText:
+                      'Enter your area or address',
+
+                  prefixIcon:
+                      const Icon(
+                    Icons.search,
+                  ),
+
+                  suffixIcon:
+                      IconButton(
+                    icon:
+                        const Icon(
+                      Icons
+                          .arrow_forward_rounded,
+                    ),
+                    onPressed:
+                        loading
+                            ? null
+                            : _searchByAddress,
+                  ),
+
+                  filled: true,
+
+                  border:
+                      OutlineInputBorder(
+                    borderRadius:
+                        BorderRadius.circular(
+                      16,
+                    ),
+                    borderSide:
+                        BorderSide.none,
+                  ),
                 ),
-                child: Align(
-                  alignment:
-                      Alignment.centerLeft,
+
+                onSubmitted:
+                    (_) =>
+                        _searchByAddress(),
+              ),
+
+              const SizedBox(
+                height: 10,
+              ),
+
+              // ==================================================
+              // CURRENT LOCATION
+              // ==================================================
+
+              SizedBox(
+                width:
+                    double.infinity,
+
+                child:
+                    OutlinedButton.icon(
+                  onPressed:
+                      loading
+                          ? null
+                          : _useCurrentLocation,
+
+                  icon:
+                      const Icon(
+                    Icons.my_location,
+                  ),
+
+                  label:
+                      const Text(
+                    'Use my current location',
+                  ),
+
+                  style:
+                      OutlinedButton
+                          .styleFrom(
+                    padding:
+                        const EdgeInsets
+                            .symmetric(
+                      vertical: 14,
+                    ),
+
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(
+                        16,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(
+                height: 12,
+              ),
+
+              // ==================================================
+              // LOADING
+              // ==================================================
+
+              if (loading)
+                const Padding(
+                  padding:
+                      EdgeInsets.symmetric(
+                    vertical: 8,
+                  ),
+                  child: Center(
+                    child:
+                        CircularProgressIndicator(),
+                  ),
+                ),
+
+              // ==================================================
+              // ERROR
+              // ==================================================
+
+              if (error != null)
+                Container(
+                  width:
+                      double.infinity,
+                  margin:
+                      const EdgeInsets.only(
+                    bottom: 12,
+                  ),
+                  padding:
+                      const EdgeInsets.all(
+                    12,
+                  ),
+                  decoration:
+                      BoxDecoration(
+                    color:
+                        AshaColors.peach
+                            .withOpacity(
+                      0.45,
+                    ),
+                    borderRadius:
+                        BorderRadius.circular(
+                      14,
+                    ),
+                  ),
                   child: Text(
-                    'Results from $sourceText',
+                    error!,
                     style:
                         const TextStyle(
-                      fontSize: 10,
-                      color:
-                          Colors.black45,
+                      fontSize: 12,
                     ),
                   ),
                 ),
+
+              // ==================================================
+              // MAP
+              // ==================================================
+
+              _buildMap(),
+
+              const SizedBox(
+                height: 16,
               ),
 
-            // ==================================================
-            // MAP
-            // ==================================================
+              const Text(
+                'Nearby medical facilities',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight:
+                      FontWeight.bold,
+                ),
+              ),
 
-            Expanded(
-              flex: 5,
-              child:
-                  latitude == null ||
-                          longitude == null
-                      ? Container(
-                          margin:
-                              const EdgeInsets
-                                  .symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          decoration:
-                              BoxDecoration(
+              const SizedBox(
+                height: 10,
+              ),
+
+              // ==================================================
+              // RESULTS
+              // ==================================================
+
+              Expanded(
+                child: results.isEmpty
+                    ? Center(
+                        child: Text(
+                          loading
+                              ? 'Finding nearby medical facilities...'
+                              : 'No nearby medical facilities found.',
+                          textAlign:
+                              TextAlign.center,
+                          style:
+                              TextStyle(
+                            fontSize: 12,
                             color:
-                                const Color(
-                              0xFFFFE9DC,
-                            ),
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
-                              20,
-                            ),
-                          ),
-                          child:
-                              const Center(
-                            child: Column(
-                              mainAxisSize:
-                                  MainAxisSize
-                                      .min,
-                              children: [
-
-                                Icon(
-                                  Icons
-                                      .map_outlined,
-                                  size: 45,
-                                  color:
-                                      Color(
-                                    0xFFD8754E,
-                                  ),
-                                ),
-
-                                SizedBox(
-                                  height: 10,
-                                ),
-
-                                Text(
-                                  'Search a location to see nearby healthcare providers',
-                                  textAlign:
-                                      TextAlign
-                                          .center,
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      : ClipRRect(
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                            20,
-                          ),
-                          child:
-                              FlutterMap(
-                            mapController:
-                                _mapController,
-                            options:
-                                MapOptions(
-                              initialCenter:
-                                  LatLng(
-                                latitude!,
-                                longitude!,
-                              ),
-                              initialZoom:
-                                  14,
-                              onMapReady:
-                                  () {
-                                _mapReady =
-                                    true;
-
-                                if (_pendingMapLatitude !=
-                                        null &&
-                                    _pendingMapLongitude !=
-                                        null) {
-                                  _mapController
-                                      .move(
-                                    LatLng(
-                                      _pendingMapLatitude!,
-                                      _pendingMapLongitude!,
-                                    ),
-                                    14,
-                                  );
-                                }
-                              },
-                            ),
-                            children: [
-
-                              TileLayer(
-                                urlTemplate:
-                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                userAgentPackageName:
-                                    'com.asha.womenshealth',
-                              ),
-
-                              MarkerLayer(
-                                markers:
-                                    getMarkers(),
-                              ),
-
-                              RichAttributionWidget(
-                                attributions:
-                                    [
-                                  TextSourceAttribution(
-                                    'OpenStreetMap contributors',
-                                    onTap:
-                                        () {
-                                      launchUrl(
-                                        Uri.parse(
-                                          'https://www.openstreetmap.org/copyright',
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ],
+                                AshaColors.slate,
                           ),
                         ),
-            ),
-
-            // ==================================================
-            // RESULTS
-            // ==================================================
-
-            Expanded(
-              flex: 4,
-              child: Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(
-                  16,
-                  12,
-                  16,
-                  0,
-                ),
-                child:
-                    loadingDoctors
-                        ? const Center(
-                            child:
-                                CircularProgressIndicator(),
-                          )
-                        : errorMessage !=
-                                    null &&
-                                doctors.isEmpty
-                            ? Center(
-                                child:
-                                    Padding(
-                                  padding:
-                                      const EdgeInsets
-                                          .all(
-                                    20,
-                                  ),
-                                  child:
-                                      Column(
-                                    mainAxisSize:
-                                        MainAxisSize
-                                            .min,
-                                    children: [
-
-                                      const Icon(
-                                        Icons
-                                            .location_searching,
-                                        size: 40,
-                                        color:
-                                            Color(
-                                          0xFFD8754E,
-                                        ),
-                                      ),
-
-                                      const SizedBox(
-                                        height: 10,
-                                      ),
-
-                                      Text(
-                                        errorMessage!,
-                                        textAlign:
-                                            TextAlign
-                                                .center,
-                                        style:
-                                            const TextStyle(
-                                          color:
-                                              Colors
-                                                  .black54,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              )
-                            : doctors.isEmpty
-                                ? const Center(
-                                    child:
-                                        Text(
-                                      'Search a location to find nearby providers.',
-                                      textAlign:
-                                          TextAlign
-                                              .center,
-                                    ),
-                                  )
-                                : ListView
-                                    .builder(
-                                    itemCount:
-                                        doctors.length,
-                                    itemBuilder:
-                                        (
-                                      context,
-                                      index,
-                                    ) {
-                                      return buildDoctorCard(
-                                        doctors[
-                                            index],
-                                      );
-                                    },
-                                  ),
+                      )
+                    : ListView.builder(
+                        itemCount:
+                            results.length,
+                        itemBuilder:
+                            (_, index) {
+                          return _doctorCard(
+                            results[index],
+                          );
+                        },
+                      ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // CATEGORY BUTTON
-  // ============================================================
-
-  Widget _categoryButton(
-    String type,
-    String label,
-    IconData icon,
-  ) {
-    final bool selected =
-        selectedType == type;
-
-    return OutlinedButton.icon(
-      onPressed: () =>
-          changeType(type),
-
-      style:
-          OutlinedButton.styleFrom(
-        backgroundColor:
-            selected
-                ? const Color(
-                    0xFFD8754E,
-                  )
-                : Colors.white,
-
-        foregroundColor:
-            selected
-                ? Colors.white
-                : const Color(
-                    0xFFD8754E,
-                  ),
-
-        side:
-            const BorderSide(
-          color:
-              Color(0xFFD8754E),
-        ),
-
-        padding:
-            const EdgeInsets.symmetric(
-          vertical: 11,
-          horizontal: 4,
-        ),
-
-        shape:
-            RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.circular(
-            14,
+            ],
           ),
         ),
       ),
-
-      icon:
-          Icon(
-        icon,
-        size: 18,
-      ),
-
-      label:
-          Text(
-        label,
-        style:
-            const TextStyle(
-          fontSize: 12,
-          fontWeight:
-              FontWeight.w600,
-        ),
-      ),
     );
   }
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
+
+  @override
+  void dispose() {
+    _addressController.dispose();
+    super.dispose();
+  }
 }
+

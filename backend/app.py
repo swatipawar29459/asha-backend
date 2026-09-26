@@ -862,20 +862,10 @@ def notifications(user_id):
     })
 
 
+
 # ============================================================
 # FIND HEALTHCARE
 # ============================================================
-#
-# Primary source:
-# OpenStreetMap / Overpass
-#
-# Demo fallback:
-# Verified Kurla East healthcare locations
-#
-# The fallback is intentionally limited to Kurla East so
-# the app never shows a Kurla facility for an unrelated city.
-# ============================================================
-
 
 KURLA_MIN_LAT = 19.045
 KURLA_MAX_LAT = 19.085
@@ -884,120 +874,53 @@ KURLA_MAX_LNG = 72.910
 
 
 KURLA_FALLBACK = [
-
     {
-        "name":
-            "Aryan Hospital & Medical Centre",
-
-        "type":
-            "hospital",
-
-        "address":
-            "D-28/29, Nehru Nagar, Station Road, Kurla East, Mumbai, Maharashtra 400024",
-
-        "phone":
-            "02225275999",
-
-        "website":
-            None,
-
-        "opening_hours":
-            "Open 24 hours",
-
-        "lat":
-            19.0648,
-
-        "lng":
-            72.8848
-
+        "name": "Aryan Hospital & Medical Centre",
+        "type": "hospital",
+        "address": "D-28/29, Nehru Nagar, Station Road, Kurla East, Mumbai, Maharashtra 400024",
+        "phone": "02225275999",
+        "website": None,
+        "opening_hours": "Open 24 hours",
+        "lat": 19.0648,
+        "lng": 72.8848,
     },
 
     {
-        "name":
-            "Madhavbaug Clinic - Kurla East",
-
-        "type":
-            "clinic",
-
-        "address":
-            "Bunglow No. 68-C, Kamgar Nagar, Near Tilak Nagar Railway Station, Kurla East, Mumbai 400024",
-
-        "phone":
-            "9321123863",
-
-        "website":
-            "https://madhavbaug.org/clinic/kurla-east-mumbai",
-
-        "opening_hours":
-            "10:00 AM - 7:00 PM; Thursday closed",
-
-        "lat":
-            19.0620504,
-
-        "lng":
-            72.8876248
-
+        "name": "Madhavbaug Clinic - Kurla East",
+        "type": "clinic",
+        "address": "Bunglow No. 68-C, Kamgar Nagar, Near Tilak Nagar Railway Station, Kurla East, Mumbai 400024",
+        "phone": "9321123863",
+        "website": "https://madhavbaug.org/clinic/kurla-east-mumbai",
+        "opening_hours": "10:00 AM - 7:00 PM; Thursday closed",
+        "lat": 19.0620504,
+        "lng": 72.8876248,
     },
 
     {
-        "name":
-            "Nehru Nagar Police Dawakhana",
-
-        "type":
-            "hospital",
-
-        "address":
-            "Ambedkar Garden, Bhiva Bapu Magre Marg, Nehru Nagar, Kurla East, Mumbai",
-
-        "phone":
-            None,
-
-        "website":
-            None,
-
-        "opening_hours":
-            None,
-
-        "lat":
-            19.0644615,
-
-        "lng":
-            72.8834147
-
+        "name": "Nehru Nagar Police Dawakhana",
+        "type": "hospital",
+        "address": "Ambedkar Garden, Bhiva Bapu Magre Marg, Nehru Nagar, Kurla East, Mumbai",
+        "phone": None,
+        "website": None,
+        "opening_hours": None,
+        "lat": 19.0644615,
+        "lng": 72.8834147,
     },
 
     {
-        "name":
-            "Maauli Medical",
-
-        "type":
-            "clinic",
-
-        "address":
-            "8C/Sharad, 16, Kamgaar Nagar, Kurla East, Mumbai",
-
-        "phone":
-            None,
-
-        "website":
-            None,
-
-        "opening_hours":
-            None,
-
-        "lat":
-            19.063883,
-
-        "lng":
-            72.8888818
-
-    }
-
+        "name": "Maauli Medical",
+        "type": "clinic",
+        "address": "8C/Sharad, 16, Kamgaar Nagar, Kurla East, Mumbai",
+        "phone": None,
+        "website": None,
+        "opening_hours": None,
+        "lat": 19.063883,
+        "lng": 72.8888818,
+    },
 ]
 
 
 def is_kurla_area(latitude, longitude):
-
     return (
         KURLA_MIN_LAT <= latitude <= KURLA_MAX_LAT
         and
@@ -1005,113 +928,45 @@ def is_kurla_area(latitude, longitude):
     )
 
 
-def get_kurla_fallback(selected_type):
+def get_kurla_fallback():
+    """
+    Return all Kurla healthcare facilities.
 
-    fallback = []
+    The Flutter screen does not have category buttons,
+    so the app receives hospitals and clinics together.
+    """
 
-    for place in KURLA_FALLBACK:
-
-        if selected_type == "hospital":
-
-            if place["type"] == "hospital":
-
-                fallback.append(
-                    dict(place)
-                )
-
-        elif selected_type == "clinic":
-
-            if place["type"] == "clinic":
-
-                fallback.append(
-                    dict(place)
-                )
-
-        else:
-
-            # Doctors category can show medical centres
-            # because they contain doctors/specialists.
-
-            if place["type"] in [
-                "hospital",
-                "clinic"
-            ]:
-
-                doctor_place = dict(place)
-
-                doctor_place["type"] = "doctor"
-
-                fallback.append(
-                    doctor_place
-                )
-
-    return fallback
+    return [
+        dict(place)
+        for place in KURLA_FALLBACK
+    ]
 
 
-@app.route(
-    "/doctors"
-)
+@app.route("/doctors")
 def doctors():
 
-    lat = request.args.get(
-        "lat"
-    )
+    # --------------------------------------------------------
+    # READ LOCATION
+    # --------------------------------------------------------
 
-    lng = request.args.get(
-        "lng"
-    )
-
-    selected_type = (
-        request.args.get(
-            "type",
-            "doctor"
-        )
-        .lower()
-        .strip()
-    )
-
-    if selected_type not in [
-        "doctor",
-        "clinic",
-        "hospital"
-    ]:
-
-        selected_type = "doctor"
+    lat = request.args.get("lat")
+    lng = request.args.get("lng")
 
     if not lat or not lng:
-
         return jsonify({
-
-            "error":
-                "Latitude and longitude are required.",
-
-            "results":
-                []
-
+            "error": "Latitude and longitude are required.",
+            "results": []
         }), 400
 
     try:
+        latitude = float(lat)
+        longitude = float(lng)
 
-        latitude = float(
-            lat
-        )
-
-        longitude = float(
-            lng
-        )
-
-    except ValueError:
-
+    except (TypeError, ValueError):
         return jsonify({
-
-            "error":
-                "Invalid latitude or longitude.",
-
-            "results":
-                []
-
+            "error": "Invalid latitude or longitude.",
+            "results": []
         }), 400
-
 
     # --------------------------------------------------------
     # SEARCH RADIUS
@@ -1119,86 +974,46 @@ def doctors():
 
     SEARCH_RADIUS = 10000
 
-
     # --------------------------------------------------------
-    # OVERPASS QUERY
+    # ONE GENERAL HEALTHCARE QUERY
+    #
+    # We intentionally search all healthcare facilities
+    # because the Flutter UI does NOT have Doctor / Clinic /
+    # Hospital selection buttons.
     # --------------------------------------------------------
 
-    if selected_type == "hospital":
-
-        query = f"""
-[out:json][timeout:45];
+    query = f"""
+[out:json][timeout:25];
 (
+  nwr["amenity"="doctors"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["healthcare"="doctor"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["amenity"="clinic"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["healthcare"="clinic"](around:{SEARCH_RADIUS},{latitude},{longitude});
   nwr["amenity"="hospital"](around:{SEARCH_RADIUS},{latitude},{longitude});
   nwr["healthcare"="hospital"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["healthcare"="centre"]["healthcare:speciality"](around:{SEARCH_RADIUS},{latitude},{longitude});
-);
-out center;
-"""
-
-    elif selected_type == "clinic":
-
-        query = f"""
-[out:json][timeout:45];
-(
-  nwr["amenity"="clinic"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["healthcare"="clinic"](around:{SEARCH_RADIUS},{latitude},{longitude});
   nwr["healthcare"="centre"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["amenity"="doctors"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["healthcare"="doctor"](around:{SEARCH_RADIUS},{latitude},{longitude});
 );
 out center;
 """
-
-    else:
-
-        query = f"""
-[out:json][timeout:45];
-(
-  nwr["amenity"="doctors"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["healthcare"="doctor"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["healthcare"="doctors"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["healthcare"="centre"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["amenity"="clinic"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["healthcare"="clinic"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["amenity"="hospital"](around:{SEARCH_RADIUS},{latitude},{longitude});
-);
-out center;
-"""
-
 
     # --------------------------------------------------------
     # OVERPASS SERVERS
     # --------------------------------------------------------
 
     overpass_servers = [
-
         "https://overpass.private.coffee/api/interpreter",
-
         "https://overpass-api.de/api/interpreter",
-
-        "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
-
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     ]
 
-
     headers = {
-
         "User-Agent":
             "Asha-Womens-Health-App/1.0",
-
         "Accept":
-            "application/json"
-
+            "application/json",
     }
 
-
     data = None
-
-    last_error = None
-
-    successful_server = None
-
 
     # --------------------------------------------------------
     # TRY LIVE SEARCH
@@ -1214,20 +1029,12 @@ out center;
             )
 
             response = requests.post(
-
                 server,
-
                 data={
-                    "data":
-                        query
+                    "data": query
                 },
-
-                headers=
-                    headers,
-
-                timeout=
-                    50
-
+                headers=headers,
+                timeout=30,
             )
 
             print(
@@ -1236,42 +1043,43 @@ out center;
                 server
             )
 
-            if response.status_code == 200:
+            if response.status_code != 200:
+                continue
 
-                try:
+            try:
+                parsed = response.json()
+            except ValueError:
+                continue
 
-                    parsed = response.json()
+            if isinstance(parsed, dict):
+                data = parsed
+                break
 
-                    if isinstance(
-                        parsed,
-                        dict
-                    ):
+        except requests.exceptions.Timeout:
 
-                        data = parsed
-
-                        successful_server = (
-                            server
-                        )
-
-                        break
-
-                except ValueError as e:
-
-                    last_error = str(e)
-
-            else:
-
-                last_error = (
-                    f"HTTP {response.status_code}"
-                )
+            print(
+                "Overpass timeout:",
+                server
+            )
 
         except requests.exceptions.RequestException as e:
 
-            last_error = str(e)
+            print(
+                "Overpass request failed:",
+                server,
+                e
+            )
 
+        except Exception as e:
+
+            print(
+                "Unexpected Overpass error:",
+                server,
+                e
+            )
 
     # --------------------------------------------------------
-    # PARSE LIVE RESULTS
+    # PARSE RESULTS
     # --------------------------------------------------------
 
     results = []
@@ -1289,6 +1097,10 @@ out center;
                 "tags",
                 {}
             )
+
+            # ------------------------------------------------
+            # GET COORDINATES
+            # ------------------------------------------------
 
             if (
                 "lat" in element
@@ -1320,7 +1132,6 @@ out center;
                 )
 
             else:
-
                 continue
 
             if (
@@ -1328,7 +1139,6 @@ out center;
                 or
                 place_lng is None
             ):
-
                 continue
 
             try:
@@ -1345,59 +1155,78 @@ out center;
                 TypeError,
                 ValueError
             ):
-
                 continue
 
+            # ------------------------------------------------
+            # NAME
+            # ------------------------------------------------
 
             name = (
-
-                tags.get(
-                    "name"
-                )
-
-                or tags.get(
-                    "name:en"
-                )
-
-                or tags.get(
-                    "official_name"
-                )
-
-                or tags.get(
-                    "operator"
-                )
-
-                or tags.get(
-                    "brand"
-                )
-
-                or "Healthcare provider"
-
+                tags.get("name")
+                or
+                tags.get("name:en")
+                or
+                tags.get("official_name")
+                or
+                tags.get("operator")
+                or
+                tags.get("brand")
+                or
+                "Healthcare provider"
             )
 
+            # ------------------------------------------------
+            # TYPE
+            # ------------------------------------------------
+
+            if (
+                tags.get("amenity") == "hospital"
+                or
+                tags.get("healthcare") == "hospital"
+            ):
+
+                facility_type = "hospital"
+
+            elif (
+                tags.get("amenity") == "clinic"
+                or
+                tags.get("healthcare") == "clinic"
+            ):
+
+                facility_type = "clinic"
+
+            elif (
+                tags.get("amenity") == "doctors"
+                or
+                tags.get("healthcare") == "doctor"
+            ):
+
+                facility_type = "doctor"
+
+            else:
+
+                facility_type = "healthcare"
+
+            # ------------------------------------------------
+            # ADDRESS
+            # ------------------------------------------------
 
             address_parts = []
 
             for key in [
-
                 "addr:housenumber",
                 "addr:street",
                 "addr:suburb",
                 "addr:city",
-                "addr:postcode"
-
+                "addr:postcode",
             ]:
 
-                value = tags.get(
-                    key
-                )
+                value = tags.get(key)
 
                 if value:
-
                     address_parts.append(
                         str(value).strip()
                     )
-
 
             address = ", ".join(
                 address_parts
@@ -1406,63 +1235,42 @@ out center;
             if not address:
 
                 address = (
-
-                    tags.get(
-                        "addr:full"
-                    )
-
+                    tags.get("addr:full")
                     or
-                    tags.get(
-                        "description"
-                    )
-
+                    tags.get("description")
                     or
                     ""
-
                 )
 
+            # ------------------------------------------------
+            # PHONE
+            # ------------------------------------------------
 
             phone = (
-
-                tags.get(
-                    "contact:phone"
-                )
-
+                tags.get("contact:phone")
                 or
-                tags.get(
-                    "phone"
-                )
-
+                tags.get("phone")
                 or
-                tags.get(
-                    "telephone"
-                )
-
+                tags.get("telephone")
             )
 
             if phone:
+                phone = str(phone).strip()
 
-                phone = str(
-                    phone
-                ).strip()
-
+            # ------------------------------------------------
+            # WEBSITE
+            #
+            # We still collect it from OSM for data
+            # compatibility, but Flutter does NOT display
+            # a website URL.
+            # ------------------------------------------------
 
             website = (
-
-                tags.get(
-                    "contact:website"
-                )
-
+                tags.get("contact:website")
                 or
-                tags.get(
-                    "website"
-                )
-
+                tags.get("website")
                 or
-                tags.get(
-                    "url"
-                )
-
+                tags.get("url")
             )
 
             if website:
@@ -1472,13 +1280,9 @@ out center;
                 ).strip()
 
                 if not (
-                    website.startswith(
-                        "http://"
-                    )
+                    website.startswith("http://")
                     or
-                    website.startswith(
-                        "https://"
-                    )
+                    website.startswith("https://")
                 ):
 
                     website = (
@@ -1487,17 +1291,22 @@ out center;
                         website
                     )
 
+            # ------------------------------------------------
+            # OPENING HOURS
+            # ------------------------------------------------
 
             opening_hours = tags.get(
                 "opening_hours"
             )
 
             if opening_hours:
-
                 opening_hours = str(
                     opening_hours
                 ).strip()
 
+            # ------------------------------------------------
+            # ADD RESULT
+            # ------------------------------------------------
 
             results.append({
 
@@ -1505,7 +1314,7 @@ out center;
                     str(name).strip(),
 
                 "type":
-                    selected_type,
+                    facility_type,
 
                 "address":
                     str(address).strip(),
@@ -1523,10 +1332,8 @@ out center;
                     place_lat,
 
                 "lng":
-                    place_lng
-
+                    place_lng,
             })
-
 
     # --------------------------------------------------------
     # REMOVE DUPLICATES
@@ -1539,36 +1346,22 @@ out center;
     for result in results:
 
         key = (
-
             result["name"].lower().strip(),
-
-            round(
-                result["lat"],
-                5
-            ),
-
-            round(
-                result["lng"],
-                5
-            )
-
+            round(result["lat"], 5),
+            round(result["lng"], 5),
         )
 
         if key in seen:
-
             continue
 
-        seen.add(
-            key
-        )
+        seen.add(key)
 
         unique_results.append(
             result
         )
 
-
+    # Maximum 50 results
     unique_results = unique_results[:50]
-
 
     # --------------------------------------------------------
     # FALLBACK
@@ -1583,11 +1376,13 @@ out center;
             longitude
         ):
 
-            unique_results = get_kurla_fallback(
-                selected_type
+            unique_results = (
+                get_kurla_fallback()
             )
 
-            source = "ASHA demo healthcare directory"
+            source = (
+                "ASHA demo healthcare directory"
+            )
 
             print(
                 "No live OSM results. "
@@ -1596,28 +1391,25 @@ out center;
 
         else:
 
-            source = "OpenStreetMap"
-
             print(
-                "No live results and location "
-                "is outside the ASHA Kurla demo area."
+                "No live healthcare results "
+                "for this location."
             )
 
+    # --------------------------------------------------------
+    # RETURN SUCCESS
+    # --------------------------------------------------------
 
     print(
-        f"Returning {len(unique_results)} "
-        f"{selected_type} results."
+        f"Returning "
+        f"{len(unique_results)} "
+        f"healthcare results."
     )
-
-
-    # --------------------------------------------------------
-    # RETURN
-    # --------------------------------------------------------
 
     return jsonify({
 
         "type":
-            selected_type,
+            "healthcare",
 
         "radius_km":
             10,
@@ -1629,9 +1421,10 @@ out center;
             len(results),
 
         "results":
-            unique_results
+            unique_results,
 
-    })
+    }), 200
+
 
 
 # ============================================================
