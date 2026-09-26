@@ -55,11 +55,6 @@ if OPENROUTER_API_KEY:
 
 # ============================================================
 # AI MODELS
-#
-# openrouter/free automatically selects an available free model.
-#
-# Specific models are kept as fallbacks in case the free router
-# or a selected provider is temporarily unavailable.
 # ============================================================
 
 AI_MODELS = [
@@ -235,7 +230,7 @@ def encode_exercise(
 ):
 
     if value is None:
-        return 1
+        return None
 
     if isinstance(
         value,
@@ -259,8 +254,7 @@ def encode_exercise(
     }
 
     return mapping.get(
-        value,
-        1
+        value
     )
 
 
@@ -269,7 +263,7 @@ def encode_diet(
 ):
 
     if value is None:
-        return 0
+        return None
 
     if isinstance(
         value,
@@ -294,9 +288,31 @@ def encode_diet(
     }
 
     return mapping.get(
-        value,
-        0
+        value
     )
+
+
+def is_valid_date_string(
+    value
+):
+
+    if not value:
+        return False
+
+    try:
+
+        datetime.fromisoformat(
+            str(value).replace(
+                "Z",
+                "+00:00"
+            )
+        )
+
+        return True
+
+    except Exception:
+
+        return False
 
 
 # ============================================================
@@ -418,7 +434,6 @@ def clean_ai_response(
         text
     ).strip()
 
-    # Remove hidden reasoning blocks if a model returns them.
     text = re.sub(
         r"<think>.*?</think>",
         "",
@@ -426,7 +441,6 @@ def clean_ai_response(
         flags=re.IGNORECASE | re.DOTALL
     )
 
-    # Remove common reasoning headings.
     text = re.sub(
         r"^\s*(thinking|reasoning|analysis)\s*:\s*.*?\n",
         "",
@@ -434,7 +448,6 @@ def clean_ai_response(
         flags=re.IGNORECASE | re.DOTALL
     )
 
-    # Remove final answer heading.
     text = re.sub(
         r"^\s*(final answer|final response)\s*:\s*",
         "",
@@ -486,6 +499,10 @@ def predict(
 
     try:
 
+        # ====================================================
+        # CHECK ML MODEL
+        # ====================================================
+
         if model is None:
 
             return jsonify({
@@ -494,6 +511,11 @@ def predict(
                     "ML model is not loaded"
 
             }), 500
+
+
+        # ====================================================
+        # READ USER DATA
+        # ====================================================
 
         data = request.get_json()
 
@@ -506,6 +528,27 @@ def predict(
 
             }), 400
 
+
+        print(
+            "Prediction request received for user:",
+            user_id
+        )
+
+        print(
+            "Prediction profile:",
+            data
+        )
+
+
+        # ====================================================
+        # READ USER-PROVIDED VALUES
+        #
+        # IMPORTANT:
+        # No health/profile defaults are used here.
+        #
+        # The backend must receive the actual values from
+        # Flutter.
+        # ====================================================
 
         age = get_int(
             data,
@@ -524,26 +567,22 @@ def predict(
 
         stress = get_int(
             data,
-            "stress_level",
-            3
+            "stress_level"
         )
 
         sleep_hours = get_number(
             data,
-            "sleep_hours",
-            7
+            "sleep_hours"
         )
 
         pcos = get_int(
             data,
-            "pcos",
-            0
+            "pcos"
         )
 
         bmi = get_number(
             data,
-            "bmi",
-            22
+            "bmi"
         )
 
         exercise = encode_exercise(
@@ -558,29 +597,114 @@ def predict(
             )
         )
 
+        last_period_date = data.get(
+            "last_period_date"
+        )
+
 
         # ====================================================
-        # REQUIRED DATA
+        # REQUIRED DATA VALIDATION
         # ====================================================
 
         missing = []
 
+
         if age is None:
+
             missing.append(
                 "age"
             )
 
+
         if cycle_length is None:
+
             missing.append(
                 "cycle_length"
             )
 
+
         if period_length is None:
+
             missing.append(
                 "period_length"
             )
 
+
+        if stress is None:
+
+            missing.append(
+                "stress_level"
+            )
+
+
+        if sleep_hours is None:
+
+            missing.append(
+                "sleep_hours"
+            )
+
+
+        if pcos is None:
+
+            missing.append(
+                "pcos"
+            )
+
+
+        if bmi is None:
+
+            missing.append(
+                "bmi"
+            )
+
+
+        if exercise is None:
+
+            missing.append(
+                "exercise_frequency"
+            )
+
+
+        if diet is None:
+
+            missing.append(
+                "diet"
+            )
+
+
+        if not last_period_date:
+
+            missing.append(
+                "last_period_date"
+            )
+
+
+        elif not is_valid_date_string(
+            last_period_date
+        ):
+
+            return jsonify({
+
+                "error":
+                    "Invalid last period date",
+
+                "details":
+                    "Please send last_period_date "
+                    "as a valid ISO date."
+
+            }), 400
+
+
+        # ====================================================
+        # STOP IF USER DATA IS MISSING
+        # ====================================================
+
         if missing:
+
+            print(
+                "Missing prediction data:",
+                missing
+            )
 
             return jsonify({
 
@@ -588,13 +712,93 @@ def predict(
                     "Missing required user data",
 
                 "missing":
-                    missing
+                    missing,
+
+                "message":
+                    "Please complete your health profile "
+                    "before generating a personalized prediction."
+
+            }), 400
+
+
+        # ====================================================
+        # VALIDATE BASIC VALUES
+        # ====================================================
+
+        if age <= 0:
+
+            return jsonify({
+
+                "error":
+                    "Invalid age"
+
+            }), 400
+
+
+        if cycle_length <= 0:
+
+            return jsonify({
+
+                "error":
+                    "Invalid cycle length"
+
+            }), 400
+
+
+        if period_length <= 0:
+
+            return jsonify({
+
+                "error":
+                    "Invalid period length"
+
+            }), 400
+
+
+        if bmi <= 0:
+
+            return jsonify({
+
+                "error":
+                    "Invalid BMI"
+
+            }), 400
+
+
+        if sleep_hours < 0:
+
+            return jsonify({
+
+                "error":
+                    "Invalid sleep hours"
+
+            }), 400
+
+
+        if stress < 1 or stress > 5:
+
+            return jsonify({
+
+                "error":
+                    "Stress level must be between 1 and 5"
+
+            }), 400
+
+
+        if pcos not in [0, 1]:
+
+            return jsonify({
+
+                "error":
+                    "PCOS value must be 0 or 1"
 
             }), 400
 
 
         # ====================================================
         # BUILD MODEL INPUT
+        #
+        # These values come from the request sent by Flutter.
         # ====================================================
 
         raw = {
@@ -629,12 +833,16 @@ def predict(
         }
 
 
+        print(
+            "Actual ML input:",
+            raw
+        )
+
+
         features = pd.DataFrame(
             [raw]
         )[
-
             FEATURE_ORDER
-
         ]
 
 
@@ -653,6 +861,12 @@ def predict(
             round(
                 predicted_cycle_length
             )
+        )
+
+
+        print(
+            "Predicted cycle length:",
+            predicted_cycle_length
         )
 
 
@@ -681,69 +895,88 @@ def predict(
         # LAST PERIOD DATE
         # ====================================================
 
-        last_period_date = data.get(
-            "last_period_date"
+        try:
+
+            last_date = datetime.fromisoformat(
+                str(
+                    last_period_date
+                ).replace(
+                    "Z",
+                    "+00:00"
+                )
+            )
+
+        except Exception:
+
+            return jsonify({
+
+                "error":
+                    "Invalid last period date",
+
+                "details":
+                    "Could not read the supplied "
+                    "last period date."
+
+            }), 400
+
+
+        if last_date.tzinfo:
+
+            today = datetime.now(
+                last_date.tzinfo
+            )
+
+        else:
+
+            today = datetime.now()
+
+
+        today_date = today.date()
+
+
+        # ====================================================
+        # CURRENT CYCLE DAY
+        # ====================================================
+
+        current_day = (
+
+            today_date
+            -
+            last_date.date()
+
+        ).days + 1
+
+
+        current_day = max(
+            1,
+            current_day
         )
 
-        current_day = 1
 
-        today_date = datetime.now().date()
+        # ====================================================
+        # EXPECTED NEXT PERIOD
+        #
+        # The next period is based on:
+        #
+        # actual user last-period date
+        # +
+        # ML predicted cycle length
+        #
+        # Example:
+        # Last period = 7 September
+        # Predicted cycle = 30 days
+        # Expected next period = 7 October
+        # ====================================================
 
-        expected_period_date = None
+        expected_period_date = (
 
+            last_date.date()
+            +
+            timedelta(
+                days=predicted_cycle_length
+            )
 
-        if last_period_date:
-
-            try:
-
-                last_date = datetime.fromisoformat(
-                    str(
-                        last_period_date
-                    ).replace(
-                        "Z",
-                        "+00:00"
-                    )
-                )
-
-                if last_date.tzinfo:
-
-                    today = datetime.now(
-                        last_date.tzinfo
-                    )
-
-                else:
-
-                    today = datetime.now()
-
-                today_date = today.date()
-
-                current_day = (
-                    today_date
-                    -
-                    last_date.date()
-                ).days + 1
-
-                current_day = max(
-                    1,
-                    current_day
-                )
-
-                expected_period_date = (
-                    last_date.date()
-                    +
-                    timedelta(
-                        days=predicted_cycle_length
-                    )
-                )
-
-            except Exception as e:
-
-                print(
-                    "Last period date error:",
-                    e
-                )
-
-                current_day = 1
+        )
 
 
         # ====================================================
@@ -751,9 +984,11 @@ def predict(
         # ====================================================
 
         cycle_progress = (
+
             current_day
             /
             predicted_cycle_length
+
         )
 
         cycle_progress = max(
@@ -766,41 +1001,35 @@ def predict(
 
 
         # ====================================================
-        # NEXT PERIOD
+        # DAYS UNTIL NEXT PERIOD
         # ====================================================
 
-        if expected_period_date is not None:
+        days_until_period = (
 
-            days_until_period = (
-                expected_period_date
-                -
-                today_date
-            ).days
+            expected_period_date
+            -
+            today_date
 
-        else:
+        ).days
 
-            days_until_period = (
-                predicted_cycle_length
-                -
-                current_day
-                +
-                1
+
+        if days_until_period < 0:
+
+            next_period_label = (
+                "Period may be due"
             )
 
+        elif days_until_period == 0:
 
-        if days_until_period <= 0:
+            next_period_label = (
+                "Period due today"
+            )
 
-            if days_until_period == 0:
+        elif days_until_period == 1:
 
-                next_period_label = (
-                    "Period due today"
-                )
-
-            else:
-
-                next_period_label = (
-                    "Period may be due"
-                )
+            next_period_label = (
+                "In 1 day"
+            )
 
         else:
 
@@ -840,6 +1069,9 @@ def predict(
 
         # ====================================================
         # FERTILE WINDOW
+        #
+        # Approximation based on predicted cycle length.
+        # This is NOT a medical diagnosis.
         # ====================================================
 
         ovulation_day = max(
@@ -858,9 +1090,11 @@ def predict(
         )
 
         fertile_window_label = (
+
             f"Cycle days "
             f"{fertile_start}–"
             f"{fertile_end}"
+
         )
 
 
@@ -899,6 +1133,12 @@ def predict(
             "next_period_label":
                 next_period_label,
 
+            "next_period_date":
+                expected_period_date.isoformat(),
+
+            "days_until_period":
+                days_until_period,
+
             "fertile_window_label":
                 fertile_window_label,
 
@@ -924,7 +1164,41 @@ def predict(
 
                 cycle_length
 
-            ]
+            ],
+
+            "input_data": {
+
+                "age":
+                    age,
+
+                "cycle_length":
+                    cycle_length,
+
+                "period_length":
+                    period_length,
+
+                "stress_level":
+                    stress,
+
+                "sleep_hours":
+                    sleep_hours,
+
+                "bmi":
+                    bmi,
+
+                "exercise_frequency":
+                    exercise,
+
+                "diet":
+                    diet,
+
+                "pcos":
+                    pcos,
+
+                "last_period_date":
+                    last_period_date
+
+            }
 
         })
 
@@ -1006,10 +1280,6 @@ def chat():
 
     try:
 
-        # ====================================================
-        # READ REQUEST
-        # ====================================================
-
         data = request.get_json()
 
         if not data:
@@ -1040,10 +1310,6 @@ def chat():
             }), 400
 
 
-        # ====================================================
-        # CHECK API KEY
-        # ====================================================
-
         if client is None:
 
             print(
@@ -1057,10 +1323,6 @@ def chat():
 
             }), 500
 
-
-        # ====================================================
-        # CONVERSATION HISTORY
-        # ====================================================
 
         history = data.get(
             "history",
@@ -1133,10 +1395,6 @@ def chat():
                 })
 
 
-        # ====================================================
-        # CURRENT USER MESSAGE
-        # ====================================================
-
         messages.append({
 
             "role":
@@ -1153,20 +1411,6 @@ def chat():
             user_message
         )
 
-
-        # ====================================================
-        # TRY MULTIPLE AI MODELS
-        #
-        # First:
-        #   openrouter/free
-        #
-        # This automatically chooses an available free model.
-        #
-        # If that fails:
-        #   Gemma 31B
-        #   Gemma 26B
-        #   Qwen
-        # ====================================================
 
         last_error = None
 
@@ -1205,10 +1449,6 @@ def chat():
                 )
 
 
-                # =================================================
-                # CHECK RESPONSE
-                # =================================================
-
                 if response is None:
 
                     raise Exception(
@@ -1243,10 +1483,6 @@ def chat():
                     )
 
 
-                # =================================================
-                # CLEAN AI RESPONSE
-                # =================================================
-
                 reply = clean_ai_response(
                     reply
                 )
@@ -1258,10 +1494,6 @@ def chat():
                         "AI response became empty after cleaning."
                     )
 
-
-                # =================================================
-                # SUCCESS
-                # =================================================
 
                 print(
                     "Asha AI model used:",
@@ -1306,10 +1538,6 @@ def chat():
                 )
 
 
-                # =================================================
-                # RATE LIMIT / TEMPORARY ERROR
-                # =================================================
-
                 if (
 
                     "429" in error_text
@@ -1345,10 +1573,6 @@ def chat():
 
                 continue
 
-
-        # ========================================================
-        # ALL MODELS FAILED
-        # ========================================================
 
         print(
             "All Asha AI models failed."
@@ -1396,9 +1620,6 @@ def chat():
 
 # ============================================================
 # NOTIFICATIONS
-#
-# Flutter currently sends POST requests.
-# We accept BOTH GET and POST.
 # ============================================================
 
 @app.route(
@@ -1740,6 +1961,48 @@ def doctors():
         }), 400
 
 
+    # ========================================================
+    # KURLA DEMO FALLBACK
+    # ========================================================
+
+    if is_kurla_area(
+        latitude,
+        longitude
+    ):
+
+        kurla_results = get_kurla_fallback(
+            selected_type
+        )
+
+        print(
+            "Kurla location detected."
+        )
+
+        print(
+            f"Returning {len(kurla_results)} "
+            "Kurla fallback healthcare results."
+        )
+
+        return jsonify({
+
+            "type":
+                selected_type,
+
+            "radius_km":
+                10,
+
+            "source":
+                "ASHA demo healthcare directory",
+
+            "live_results":
+                0,
+
+            "results":
+                kurla_results
+
+        })
+
+
     SEARCH_RADIUS = 10000
 
 
@@ -1818,10 +2081,6 @@ out center;
 
     last_error = None
 
-
-    # ========================================================
-    # TRY MULTIPLE OVERPASS SERVERS
-    # ========================================================
 
     for server in overpass_servers:
 
@@ -2241,7 +2500,7 @@ out center;
 
 
     # ========================================================
-    # KURLA DEMO FALLBACK
+    # KURLA FALLBACK IF LIVE SEARCH RETURNS NOTHING
     # ========================================================
 
     if not unique_results:
@@ -2288,12 +2547,6 @@ out center;
         f"{selected_type} results."
     )
 
-
-    # IMPORTANT:
-    # Always return HTTP 200 when the location itself
-    # was valid. Flutter can then display a proper
-    # "no facilities found" message instead of saying
-    # the healthcare service is unavailable.
 
     return jsonify({
 
