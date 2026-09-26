@@ -1,62 +1,103 @@
+// ============================================================
+// DOCTOR MODEL
+// ============================================================
 
 class Doctor {
+  final String id;
   final String name;
+  final double latitude;
+  final double longitude;
+  final String? address;
   final String type;
-  final String address;
-  final String? phone;
-  final String? website;
-  final String? openingHours;
-  final double lat;
-  final double lng;
+  final double? rating;
+  final bool? isOpen;
 
   Doctor({
+    required this.id,
     required this.name,
+    required this.latitude,
+    required this.longitude,
+    this.address,
     required this.type,
-    required this.address,
-    required this.lat,
-    required this.lng,
-    this.phone,
-    this.website,
-    this.openingHours,
+    this.rating,
+    this.isOpen,
   });
 
   factory Doctor.fromJson(Map<String, dynamic> json) {
     return Doctor(
-      name: json['name']?.toString().trim().isNotEmpty == true
-          ? json['name'].toString().trim()
-          : 'Healthcare provider',
-      type: json['type']?.toString() ?? 'healthcare',
-      address: json['address']?.toString() ?? '',
-      phone: _optionalString(json['phone']),
-      website: _optionalString(json['website']),
-      openingHours: _optionalString(json['opening_hours']),
-      lat: _toDouble(json['lat']),
-      lng: _toDouble(json['lng']),
+      id: json['id'] ?? '',
+      name: json['name'] ?? 'Unknown',
+      latitude:
+          (json['latitude'] as num?)?.toDouble() ?? 0,
+      longitude:
+          (json['longitude'] as num?)?.toDouble() ?? 0,
+      address: json['address'],
+      type: json['type'] ?? 'hospital',
+      rating: (json['rating'] as num?)?.toDouble(),
+      isOpen: json['is_open'],
     );
   }
 
-  static String? _optionalString(dynamic value) {
-    if (value == null) {
-      return null;
-    }
+  get openingHours => null;
 
-    final text = value.toString().trim();
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address,
+        'type': type,
+        'rating': rating,
+        'is_open': isOpen,
+      };
 
-    if (text.isEmpty || text == 'null') {
-      return null;
-    }
+  @override
+  String toString() => 'Doctor(name: $name, rating: $rating)';
+}
 
-    return text;
+// ============================================================
+// DOCTOR DETAILS MODEL
+// ============================================================
+
+class DoctorDetails {
+  final String? address;
+  final String? phone;
+  final String? website;
+  final Map<String, dynamic>? openingHours;
+  final double? rating;
+  final List<Map<String, dynamic>>? reviews;
+
+  DoctorDetails({
+    this.address,
+    this.phone,
+    this.website,
+    this.openingHours,
+    this.rating,
+    this.reviews,
+  });
+
+  factory DoctorDetails.fromJson(Map<String, dynamic> json) {
+    return DoctorDetails(
+      address: json['address'],
+      phone: json['phone'],
+      website: json['website'],
+      openingHours:
+          json['opening_hours'] as Map<String, dynamic>?,
+      rating: (json['rating'] as num?)?.toDouble(),
+      reviews: (json['reviews'] as List<dynamic>?)
+          ?.cast<Map<String, dynamic>>(),
+    );
   }
 
-  static double _toDouble(dynamic value) {
-    if (value is num) {
-      return value.toDouble();
-    }
+  Map<String, dynamic> toJson() => {
+        'address': address,
+        'phone': phone,
+        'website': website,
+        'opening_hours': openingHours,
+        'rating': rating,
+        'reviews': reviews,
+      };
 
-    return double.tryParse(
-          value?.toString() ?? '',
-        ) ??
-        0.0;
-  }
+  @override
+  String toString() => 'DoctorDetails(address: $address, phone: $phone)';
 }

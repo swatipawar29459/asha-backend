@@ -1,49 +1,23 @@
+
 import 'dart:convert';
 
+import 'package:asha_app/services/health_profile_store.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/prediction.dart';
 import '../models/doctor.dart';
-import 'health_profile_store.dart';
 
-class AshaNotification {
-  final String id;
-  final String type;
-  final String title;
-  final String message;
-  final String time;
-  final bool isRead;
-
-  AshaNotification({
-    required this.id,
-    required this.type,
-    required this.title,
-    required this.message,
-    required this.time,
-    required this.isRead,
-  });
-
-  factory AshaNotification.fromJson(
-    Map<String, dynamic> json,
-  ) {
-    return AshaNotification(
-      id: json['id']?.toString() ?? '',
-      type: json['type']?.toString() ?? '',
-      title: json['title']?.toString() ?? '',
-      message: json['message']?.toString() ?? '',
-      time: json['time']?.toString() ?? '',
-      isRead: json['is_read'] == true,
-    );
-  }
-}
+// ============================================================
+// API SERVICE
+// ============================================================
 
 class ApiService {
   static const String baseUrl =
       'https://asha-backend-1.onrender.com';
 
-  // ==================================================
+  // ============================================================
   // PREDICTION
-  // ==================================================
+  // ============================================================
 
   static Future<Prediction> fetchPrediction({
     required String userId,
@@ -53,15 +27,20 @@ class ApiService {
     print('Firebase UID: $userId');
     print('Sending profile: $profile');
 
-    final response = await http.post(
-      Uri.parse(
-        '$baseUrl/predict/$userId',
-      ),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(profile),
-    );
+    final response = await http
+        .post(
+          Uri.parse(
+            '$baseUrl/predict/$userId',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(profile),
+        )
+        .timeout(
+          const Duration(seconds: 30),
+        );
 
     print(
       'Prediction: '
@@ -75,14 +54,20 @@ class ApiService {
       );
     }
 
-    return Prediction.fromJson(
-      jsonDecode(response.body),
-    );
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception(
+        'Invalid prediction response.',
+      );
+    }
+
+    return Prediction.fromJson(decoded);
   }
 
-  // ==================================================
+  // ============================================================
   // LOG SYMPTOMS
-  // ==================================================
+  // ============================================================
 
   static Future<void> logSymptoms(
     String userId,
@@ -105,192 +90,323 @@ class ApiService {
     }
   }
 
-  // ==================================================
-// AI CHAT
-// ==================================================
+  // ============================================================
+  // AI CHAT
+  // ============================================================
 
-static Future<String> sendChatMessage(
-  String message, {
-  List<Map<String, String>> history = const [],
-}) async {
-  try {
-    print('--------------------------------');
-    print('ASHA CHAT REQUEST');
-    print('Message: $message');
-    print('History: $history');
-    print('URL: $baseUrl/chat');
-
-    final response = await http
-        .post(
-          Uri.parse('$baseUrl/chat'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode({
-            'message': message,
-            'history': history,
-          }),
-        )
-        .timeout(
-          const Duration(seconds: 30),
-        );
-
-    print('ASHA CHAT STATUS: ${response.statusCode}');
-    print('ASHA CHAT RESPONSE: ${response.body}');
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Asha AI error ${response.statusCode}: ${response.body}',
-      );
-    }
-
-    final data = jsonDecode(response.body);
-
-    if (data is Map<String, dynamic>) {
-      final reply = data['reply']?.toString();
-
-      if (reply != null && reply.trim().isNotEmpty) {
-        return reply;
-      }
-
-      if (data['error'] != null) {
-        throw Exception(
-          'Asha AI error: ${data['error']}',
-        );
-      }
-    }
-
-    throw Exception(
-      'Asha returned an empty response.',
-    );
-  } catch (e) {
-    print('--------------------------------');
-    print('ASHA CHAT ERROR: $e');
-    print('--------------------------------');
-
-    rethrow;
-  }
-}
-
-  // ==================================================
-  // NOTIFICATIONS
-  // ==================================================
-
-  static Future<List<AshaNotification>>
-      fetchNotifications({
-    required String userId,
+  static Future<String> sendChatMessage(
+    String message, {
+    List<Map<String, String>> history = const [],
   }) async {
-    final profile = HealthProfileStore.toJson();
+    try {
+      print('--------------------------------');
+      print('ASHA CHAT REQUEST');
+      print('Message: $message');
+      print('History: $history');
+      print('URL: $baseUrl/chat');
 
-    final response = await http.post(
-      Uri.parse(
-        '$baseUrl/notifications/$userId',
-      ),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(profile),
-    );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/chat'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'message': message,
+              'history': history,
+            }),
+          )
+          .timeout(
+            const Duration(seconds: 30),
+          );
 
-    print(
-      'Notifications: '
-      '${response.statusCode} '
-      '${response.body}',
-    );
+      print('--------------------------------');
+      print('ASHA CHAT RESPONSE');
+      print('Status: ${response.statusCode}');
+      print('Body: ${response.body}');
+      print('--------------------------------');
 
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Could not load notifications',
-      );
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Chat failed: ${response.body}',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception(
+          'Invalid chat response.',
+        );
+      }
+
+      final reply = decoded['reply'] as String?;
+
+      if (reply == null) {
+        throw Exception(
+          'No reply in response.',
+        );
+      }
+
+      return reply;
+    } catch (e) {
+      print('Chat error: $e');
+      rethrow;
     }
-
-    final body = jsonDecode(response.body);
-
-    final List list = body['notifications'] ?? [];
-
-    return list
-        .map(
-          (item) => AshaNotification.fromJson(
-            Map<String, dynamic>.from(item),
-          ),
-        )
-        .toList();
   }
 
-  // ==================================================
+  // ============================================================
   // FIND DOCTORS
-  // ==================================================
+  // ============================================================
 
-  static Future<List<Doctor>> findDoctors(
-  double lat,
-  double lng, {
-  required String type,
-}) async {
-  final response = await http.get(
-    Uri.parse(
-      '$baseUrl/doctors'
-      '?lat=$lat'
-      '&lng=$lng'
-      '&type=${Uri.encodeQueryComponent(type)}',
-    ),
-  );
+  static Future<List<Doctor>> findDoctors({
+    required double latitude,
+    required double longitude,
+    int radius = 5000,
+  }) async {
+    try {
+      print('================================');
+      print('DOCTOR FINDER REQUEST');
+      print('Latitude: $latitude');
+      print('Longitude: $longitude');
+      print('Radius: $radius meters');
 
-  print(
-    'Doctors: '
-    '${response.statusCode} '
-    '${response.body}',
-  );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/find-doctors'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'latitude': latitude,
+              'longitude': longitude,
+              'radius': radius,
+            }),
+          )
+          .timeout(
+            const Duration(seconds: 30),
+          );
 
-  if (response.statusCode != 200) {
-    throw Exception(
-      'Could not find nearby healthcare providers',
-    );
+      print(
+        'Doctor Finder Response: '
+        '${response.statusCode}',
+      );
+      print(
+        'Response body: ${response.body}',
+      );
+      print('================================');
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Failed to find doctors: ${response.body}',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception(
+          'Invalid response format',
+        );
+      }
+
+      final rawFacilities =
+          decoded['facilities'];
+
+      if (rawFacilities is! List) {
+        throw Exception(
+          'No facilities found in server response.',
+        );
+      }
+
+      final facilities = rawFacilities
+          .whereType<Map<String, dynamic>>()
+          .map(
+            (item) => Doctor.fromJson(item),
+          )
+          .toList();
+
+      print(
+        'Found ${facilities.length} doctors',
+      );
+
+      return facilities;
+    } catch (e) {
+      print(
+        'Error finding doctors: $e',
+      );
+      rethrow;
+    }
   }
 
-  final body = jsonDecode(response.body);
+  // ============================================================
+  // GEOCODE ADDRESS
+  // ============================================================
 
-  final List results = body['results'] ?? [];
-
-  return results
-      .map(
-        (item) => Doctor.fromJson(
-          Map<String, dynamic>.from(item),
-        ),
-      )
-      .toList();
-}
-
-  // ==================================================
-  // GEOCODE
-  // ==================================================
-
-  static Future<Map<String, dynamic>>
-      geocodeAddress(
+  static Future<Map<String, dynamic>> geocodeAddress(
     String address,
   ) async {
-    final response = await http.get(
-      Uri.parse(
-        '$baseUrl/geocode'
-        '?address='
-        '${Uri.encodeComponent(address)}',
-      ),
-    );
+    try {
+      print('================================');
+      print('GEOCODING ADDRESS');
+      print('Address: $address');
 
-    print(
-      'Geocode: '
-      '${response.statusCode} '
-      '${response.body}',
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Location not found',
+      final uri = Uri.https(
+        'nominatim.openstreetmap.org',
+        '/search',
+        {
+          'q': address,
+          'format': 'jsonv2',
+          'limit': '1',
+          'countrycodes': 'in',
+          'addressdetails': '1',
+        },
       );
-    }
 
-    return Map<String, dynamic>.from(
-      jsonDecode(response.body),
-    );
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent':
+                  'AshaMenstrualHealthApp/1.0',
+            },
+          )
+          .timeout(
+            const Duration(seconds: 20),
+          );
+
+      print(
+        'Geocoding Response: '
+        '${response.statusCode}',
+      );
+      print(
+        'Geocoding Body: ${response.body}',
+      );
+      print('================================');
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Address search failed: '
+          '${response.statusCode}',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+
+      if (decoded is! List || decoded.isEmpty) {
+        throw Exception(
+          'No location found for this address.',
+        );
+      }
+
+      final firstResult = decoded.first;
+
+      if (firstResult is! Map<String, dynamic>) {
+        throw Exception(
+          'Invalid geocoding response.',
+        );
+      }
+
+      final latitude = double.tryParse(
+        firstResult['lat']?.toString() ?? '',
+      );
+
+      final longitude = double.tryParse(
+        firstResult['lon']?.toString() ?? '',
+      );
+
+      if (latitude == null ||
+          longitude == null) {
+        throw Exception(
+          'Location coordinates were not found.',
+        );
+      }
+
+      final displayName =
+          firstResult['display_name']?.toString() ??
+              address;
+
+      print(
+        'Geocoded location: '
+        '$latitude, $longitude',
+      );
+
+      return {
+        'lat': latitude,
+        'lng': longitude,
+        'display_name': displayName,
+      };
+    } catch (e) {
+      print(
+        'Geocoding error: $e',
+      );
+      rethrow;
+    }
+  }
+
+  // ============================================================
+  // GET DOCTOR DETAILS
+  // ============================================================
+
+  static Future<DoctorDetails> getDoctorDetails({
+    required String placeId,
+  }) async {
+    try {
+      print(
+        'Getting details for place: $placeId',
+      );
+
+      final response = await http
+          .get(
+            Uri.parse(
+              '$baseUrl/find-doctors/$placeId',
+            ),
+          )
+          .timeout(
+            const Duration(seconds: 30),
+          );
+
+      print(
+        'Doctor Details Response: '
+        '${response.statusCode}',
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Failed to get doctor details: '
+          '${response.body}',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception(
+          'Invalid response format',
+        );
+      }
+
+      final rawDetails =
+          decoded['details'];
+
+      if (rawDetails
+          is! Map<String, dynamic>) {
+        throw Exception(
+          'Doctor details not found.',
+        );
+      }
+
+      return DoctorDetails.fromJson(
+        rawDetails,
+      );
+    } catch (e) {
+      print(
+        'Error getting doctor details: $e',
+      );
+      rethrow;
+    }
   }
 }

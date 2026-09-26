@@ -23,6 +23,12 @@ class _HomeScreenState
 
   String userName = '';
 
+  @override
+void initState() {
+  super.initState();
+  _load();
+}
+
   // ============================================================
   // LOAD HOME DATA
   // ============================================================

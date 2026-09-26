@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -30,6 +31,8 @@ class _FindDoctorScreenState
 
   String? error;
 
+  String? searchedPlaceName;
+
   // ============================================================
   // CURRENT LOCATION
   // ============================================================
@@ -37,11 +40,14 @@ class _FindDoctorScreenState
   Future<void> _useCurrentLocation() async {
     if (loading) return;
 
+    FocusScope.of(context).unfocus();
+
     setState(() {
       loading = true;
       error = null;
       results = [];
       selectedLocation = null;
+      searchedPlaceName = null;
     });
 
     try {
@@ -50,7 +56,8 @@ class _FindDoctorScreenState
 
       if (!serviceEnabled) {
         throw Exception(
-          'Location services are disabled. Please turn on GPS/location.',
+          'Location services are disabled. '
+          'Please turn on GPS/location.',
         );
       }
 
@@ -66,14 +73,16 @@ class _FindDoctorScreenState
       if (permission ==
           LocationPermission.denied) {
         throw Exception(
-          'Location permission denied. Please allow location access.',
+          'Location permission denied. '
+          'Please allow location access.',
         );
       }
 
       if (permission ==
           LocationPermission.deniedForever) {
         throw Exception(
-          'Location permission is permanently denied. Please enable it from phone Settings.',
+          'Location permission is permanently denied. '
+          'Please enable it from phone Settings.',
         );
       }
 
@@ -85,7 +94,8 @@ class _FindDoctorScreenState
 
       debugPrint(
         'Current location: '
-        '${position.latitude}, ${position.longitude}',
+        '${position.latitude}, '
+        '${position.longitude}',
       );
 
       final location = LatLng(
@@ -98,10 +108,6 @@ class _FindDoctorScreenState
       setState(() {
         selectedLocation = location;
       });
-
-      // ----------------------------------------------------------
-      // FETCH NEARBY HEALTHCARE
-      // ----------------------------------------------------------
 
       await _loadDoctors(
         position.latitude,
@@ -116,7 +122,6 @@ class _FindDoctorScreenState
 
       setState(() {
         loading = false;
-
         error = e
             .toString()
             .replaceFirst(
@@ -132,20 +137,19 @@ class _FindDoctorScreenState
   // ============================================================
 
   Future<void> _loadDoctors(
-    double lat,
-    double lng,
+    double latitude,
+    double longitude,
   ) async {
     try {
       debugPrint(
         'Finding healthcare providers at: '
-        '$lat, $lng',
+        '$latitude, $longitude',
       );
 
       final doctors =
           await ApiService.findDoctors(
-        lat,
-        lng,
-        type: '',
+        latitude: latitude,
+        longitude: longitude,
       );
 
       debugPrint(
@@ -161,7 +165,8 @@ class _FindDoctorScreenState
 
         if (doctors.isEmpty) {
           error =
-              'Location found, but no nearby medical facilities were returned for this location.';
+              'Location found, but no nearby medical '
+              'facilities were returned.';
         } else {
           error = null;
         }
@@ -175,15 +180,16 @@ class _FindDoctorScreenState
 
       setState(() {
         loading = false;
-
         error =
-            'The location was found, but healthcare providers could not be loaded right now. Please try again.';
+            'The location was found, but healthcare '
+            'providers could not be loaded right now. '
+            'Please try again.';
       });
     }
   }
 
   // ============================================================
-  // MANUAL ADDRESS SEARCH
+  // ADDRESS SEARCH
   // ============================================================
 
   Future<void> _searchByAddress() async {
@@ -193,7 +199,7 @@ class _FindDoctorScreenState
     if (address.isEmpty) {
       setState(() {
         error =
-            'Please enter a location.';
+            'Please enter an area, address or city.';
       });
       return;
     }
@@ -207,6 +213,7 @@ class _FindDoctorScreenState
       error = null;
       results = [];
       selectedLocation = null;
+      searchedPlaceName = null;
     });
 
     try {
@@ -214,38 +221,52 @@ class _FindDoctorScreenState
         'Searching address: $address',
       );
 
+      // --------------------------------------------------------
+      // STEP 1: GEOCODE ADDRESS
+      // --------------------------------------------------------
+
       final location =
           await ApiService.geocodeAddress(
         address,
       );
 
-      final lat =
+      final latitude =
           (location['lat'] as num).toDouble();
 
-      final lng =
+      final longitude =
           (location['lng'] as num).toDouble();
 
+      final displayName =
+          location['display_name']?.toString();
+
       debugPrint(
-        'Geocoded location: $lat, $lng',
+        'Geocoded location: '
+        '$latitude, $longitude',
       );
 
+      // --------------------------------------------------------
+      // STEP 2: SHOW LOCATION ON MAP
+      // --------------------------------------------------------
+
       final searchedLocation =
-          LatLng(lat, lng);
+          LatLng(latitude, longitude);
 
       if (!mounted) return;
 
       setState(() {
         selectedLocation =
             searchedLocation;
+        searchedPlaceName =
+            displayName;
       });
 
-      // ----------------------------------------------------------
-      // FETCH NEARBY HEALTHCARE
-      // ----------------------------------------------------------
+      // --------------------------------------------------------
+      // STEP 3: FIND NEARBY DOCTORS
+      // --------------------------------------------------------
 
       await _loadDoctors(
-        lat,
-        lng,
+        latitude,
+        longitude,
       );
     } catch (e) {
       debugPrint(
@@ -256,9 +277,9 @@ class _FindDoctorScreenState
 
       setState(() {
         loading = false;
-
         error =
-            'Could not find this location. Please try a more specific area or city.';
+            'Could not find this location. '
+            'Please try a more specific area or city.';
       });
     }
   }
@@ -274,7 +295,9 @@ class _FindDoctorScreenState
         width: double.infinity,
         decoration: BoxDecoration(
           color:
-              AshaColors.peach.withOpacity(0.25),
+              AshaColors.peach.withValues(
+            alpha: 0.25,
+          ),
           borderRadius:
               BorderRadius.circular(20),
         ),
@@ -313,7 +336,7 @@ class _FindDoctorScreenState
 
             MarkerLayer(
               markers: [
-                // User/search location
+                // Selected/search location
                 Marker(
                   point:
                       selectedLocation!,
@@ -326,28 +349,28 @@ class _FindDoctorScreenState
                   ),
                 ),
 
-                // Healthcare facilities
+                // Nearby medical facilities
                 ...results
                     .where(
                       (doctor) =>
-                          doctor.lat != 0 &&
-                          doctor.lng != 0,
+                          doctor.latitude != 0 &&
+                          doctor.longitude != 0,
                     )
                     .map(
-                  (doctor) => Marker(
-                    point: LatLng(
-                      doctor.lat,
-                      doctor.lng,
+                      (doctor) => Marker(
+                        point: LatLng(
+                          doctor.latitude,
+                          doctor.longitude,
+                        ),
+                        width: 45,
+                        height: 45,
+                        child: const Icon(
+                          Icons.location_on,
+                          size: 38,
+                          color: Colors.red,
+                        ),
+                      ),
                     ),
-                    width: 45,
-                    height: 45,
-                    child: const Icon(
-                      Icons.location_on,
-                      size: 38,
-                      color: Colors.red,
-                    ),
-                  ),
-                ),
               ],
             ),
 
@@ -411,9 +434,7 @@ class _FindDoctorScreenState
               ),
             ),
 
-            const SizedBox(
-              width: 12,
-            ),
+            const SizedBox(width: 12),
 
             Expanded(
               child: Column(
@@ -434,36 +455,70 @@ class _FindDoctorScreenState
                     height: 5,
                   ),
 
-                  if (doctor.address
-                      .isNotEmpty)
+                  if (doctor.address != null &&
+                      doctor.address!.isNotEmpty)
                     Text(
-                      doctor.address,
-                      maxLines: 2,
+                      doctor.address!,
+                      maxLines: 3,
                       overflow:
                           TextOverflow.ellipsis,
                       style:
-                          TextStyle(
+                          const TextStyle(
                         fontSize: 11,
                         color:
                             AshaColors.slate,
                       ),
                     ),
 
-                  if (doctor.openingHours !=
-                      null) ...[
-                    const SizedBox(
-                      height: 5,
-                    ),
-                    Text(
-                      doctor.openingHours!,
-                      style:
-                          TextStyle(
-                        fontSize: 10,
-                        color:
-                            AshaColors.slate,
-                      ),
-                    ),
-                  ],
+                  const SizedBox(
+                    height: 5,
+                  ),
+
+                  Row(
+                    children: [
+                      if (doctor.rating != null) ...[
+                        const Icon(
+                          Icons.star,
+                          size: 14,
+                          color: Colors.amber,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          doctor.rating!
+                              .toStringAsFixed(1),
+                          style:
+                              const TextStyle(
+                            fontSize: 10,
+                            color:
+                                AshaColors.slate,
+                          ),
+                        ),
+                      ],
+
+                      if (doctor.rating != null &&
+                          doctor.isOpen != null)
+                        const SizedBox(
+                          width: 10,
+                        ),
+
+                      if (doctor.isOpen != null)
+                        Text(
+                          doctor.isOpen!
+                              ? 'Open'
+                              : 'Closed',
+                          style:
+                              TextStyle(
+                            fontSize: 10,
+                            fontWeight:
+                                FontWeight.w600,
+                            color:
+                                doctor.isOpen!
+                                    ? Colors.green
+                                    : Colors.red,
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -513,27 +568,19 @@ class _FindDoctorScreenState
                 height: 14,
               ),
 
-              // ==================================================
-              // ADDRESS SEARCH
-              // ==================================================
-
               TextField(
                 controller:
                     _addressController,
-
                 textInputAction:
                     TextInputAction.search,
-
                 decoration:
                     InputDecoration(
                   hintText:
                       'Enter your area or address',
-
                   prefixIcon:
                       const Icon(
                     Icons.search,
                   ),
-
                   suffixIcon:
                       IconButton(
                     icon:
@@ -546,9 +593,7 @@ class _FindDoctorScreenState
                             ? null
                             : _searchByAddress,
                   ),
-
                   filled: true,
-
                   border:
                       OutlineInputBorder(
                     borderRadius:
@@ -559,7 +604,6 @@ class _FindDoctorScreenState
                         BorderSide.none,
                   ),
                 ),
-
                 onSubmitted:
                     (_) =>
                         _searchByAddress(),
@@ -569,31 +613,22 @@ class _FindDoctorScreenState
                 height: 10,
               ),
 
-              // ==================================================
-              // CURRENT LOCATION
-              // ==================================================
-
               SizedBox(
-                width:
-                    double.infinity,
-
+                width: double.infinity,
                 child:
                     OutlinedButton.icon(
                   onPressed:
                       loading
                           ? null
                           : _useCurrentLocation,
-
                   icon:
                       const Icon(
                     Icons.my_location,
                   ),
-
                   label:
                       const Text(
                     'Use my current location',
                   ),
-
                   style:
                       OutlinedButton
                           .styleFrom(
@@ -602,7 +637,6 @@ class _FindDoctorScreenState
                             .symmetric(
                       vertical: 14,
                     ),
-
                     shape:
                         RoundedRectangleBorder(
                       borderRadius:
@@ -618,9 +652,25 @@ class _FindDoctorScreenState
                 height: 12,
               ),
 
-              // ==================================================
-              // LOADING
-              // ==================================================
+              if (searchedPlaceName != null)
+                Padding(
+                  padding:
+                      const EdgeInsets.only(
+                    bottom: 10,
+                  ),
+                  child: Text(
+                    searchedPlaceName!,
+                    maxLines: 2,
+                    overflow:
+                        TextOverflow.ellipsis,
+                    style:
+                        const TextStyle(
+                      fontSize: 11,
+                      color:
+                          AshaColors.slate,
+                    ),
+                  ),
+                ),
 
               if (loading)
                 const Padding(
@@ -633,10 +683,6 @@ class _FindDoctorScreenState
                         CircularProgressIndicator(),
                   ),
                 ),
-
-              // ==================================================
-              // ERROR
-              // ==================================================
 
               if (error != null)
                 Container(
@@ -654,8 +700,8 @@ class _FindDoctorScreenState
                       BoxDecoration(
                     color:
                         AshaColors.peach
-                            .withOpacity(
-                      0.45,
+                            .withValues(
+                      alpha: 0.45,
                     ),
                     borderRadius:
                         BorderRadius.circular(
@@ -670,10 +716,6 @@ class _FindDoctorScreenState
                     ),
                   ),
                 ),
-
-              // ==================================================
-              // MAP
-              // ==================================================
 
               _buildMap(),
 
@@ -694,10 +736,6 @@ class _FindDoctorScreenState
                 height: 10,
               ),
 
-              // ==================================================
-              // RESULTS
-              // ==================================================
-
               Expanded(
                 child: results.isEmpty
                     ? Center(
@@ -708,7 +746,7 @@ class _FindDoctorScreenState
                           textAlign:
                               TextAlign.center,
                           style:
-                              TextStyle(
+                              const TextStyle(
                             fontSize: 12,
                             color:
                                 AshaColors.slate,
@@ -743,3 +781,4 @@ class _FindDoctorScreenState
     super.dispose();
   }
 }
+

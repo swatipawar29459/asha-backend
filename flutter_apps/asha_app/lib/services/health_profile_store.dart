@@ -21,14 +21,11 @@ class HealthProfileStore {
   static DateTime? lastPeriodDate;
   static List<DateTime> periodHistory = [];
 
-  static const String _pendingPrefix =
-      'asha_pending_profile_';
+  static const String _pendingPrefix = 'asha_pending_profile_';
 
-  static String _userPrefix(String uid) =>
-      'asha_user_${uid}_';
+  static String _userPrefix(String uid) => 'asha_user_${uid}_';
 
-  static String _key(String prefix, String name) =>
-      '$prefix$name';
+  static String _key(String prefix, String name) => '$prefix$name';
 
   static String? get _firebaseUid =>
       FirebaseAuth.instance.currentUser?.uid;
@@ -44,7 +41,7 @@ class HealthProfileStore {
   }
 
   // ============================================================
-  // CYCLE CALCULATION
+  // CYCLE CALCULATIONS
   // ============================================================
 
   static int get currentCycleDay {
@@ -58,8 +55,7 @@ class HealthProfileStore {
       lastPeriodDate!.day,
     );
 
-    final difference =
-        _today.difference(last).inDays;
+    final difference = _today.difference(last).inDays;
 
     if (difference < 0) {
       return 1;
@@ -73,10 +69,7 @@ class HealthProfileStore {
 
     if (next == null) return false;
 
-    return _sameDate(
-      _today,
-      next,
-    );
+    return _sameDate(_today, next);
   }
 
   static bool get isPeriodOverdue {
@@ -92,9 +85,7 @@ class HealthProfileStore {
 
     if (next == null) return 0;
 
-    return next
-        .difference(_today)
-        .inDays;
+    return next.difference(_today).inDays;
   }
 
   static DateTime? get predictedNextPeriod {
@@ -109,9 +100,7 @@ class HealthProfileStore {
     );
 
     return last.add(
-      Duration(
-        days: cycleLength,
-      ),
+      Duration(days: cycleLength),
     );
   }
 
@@ -163,8 +152,7 @@ class HealthProfileStore {
     }
 
     if (isPeriodOverdue) {
-      final overdue =
-          _today.difference(next).inDays;
+      final overdue = _today.difference(next).inDays;
 
       return 'Overdue by $overdue '
           '${overdue == 1 ? 'day' : 'days'}';
@@ -190,6 +178,19 @@ class HealthProfileStore {
     return a.year == b.year &&
         a.month == b.month &&
         a.day == b.day;
+  }
+
+  // ============================================================
+  // PROFILE VALIDATION
+  // ============================================================
+
+  static bool get hasRequiredPredictionData {
+    return age != null &&
+        age! > 0 &&
+        periodLength != null &&
+        periodLength! > 0 &&
+        cycleLength > 0 &&
+        lastPeriodDate != null;
   }
 
   // ============================================================
@@ -221,8 +222,7 @@ class HealthProfileStore {
   // ============================================================
 
   static Future<void> load() async {
-    final prefs =
-        await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
 
     resetInMemory();
 
@@ -237,8 +237,7 @@ class HealthProfileStore {
       return;
     }
 
-    final prefix =
-        _userPrefix(uid);
+    final prefix = _userPrefix(uid);
 
     final exists =
         prefs.getBool(
@@ -249,25 +248,49 @@ class HealthProfileStore {
             ) ??
             false;
 
+    // ----------------------------------------------------------
+    // If there is no Firebase profile, check for pending
+    // onboarding data and automatically adopt it.
+    // ----------------------------------------------------------
+
     if (!exists) {
-      userName =
-          FirebaseAuth.instance.currentUser
-                  ?.displayName ??
-              '';
+      final hasPending =
+          prefs.getBool(
+                _key(
+                  _pendingPrefix,
+                  'profile_exists',
+                ),
+              ) ??
+              false;
 
-      return;
+      if (hasPending) {
+        await _loadFromPrefix(
+          prefs,
+          _pendingPrefix,
+        );
+
+        await _saveToPrefix(
+          prefs,
+          prefix,
+        );
+
+        await clearPendingProfile();
+      } else {
+        userName =
+            FirebaseAuth.instance.currentUser?.displayName ?? '';
+
+        return;
+      }
+    } else {
+      await _loadFromPrefix(
+        prefs,
+        prefix,
+      );
     }
-
-    await _loadFromPrefix(
-      prefs,
-      prefix,
-    );
 
     if (userName.isEmpty) {
       userName =
-          FirebaseAuth.instance.currentUser
-                  ?.displayName ??
-              '';
+          FirebaseAuth.instance.currentUser?.displayName ?? '';
     }
   }
 
@@ -275,8 +298,7 @@ class HealthProfileStore {
     SharedPreferences prefs,
     String prefix,
   ) async {
-    userId =
-        prefs.getInt(
+    userId = prefs.getInt(
       _key(prefix, 'userId'),
     );
 
@@ -286,8 +308,7 @@ class HealthProfileStore {
             ) ??
             '';
 
-    age =
-        prefs.getInt(
+    age = prefs.getInt(
       _key(prefix, 'age'),
     );
 
@@ -300,8 +321,7 @@ class HealthProfileStore {
             ) ??
             28;
 
-    periodLength =
-        prefs.getInt(
+    periodLength = prefs.getInt(
       _key(
         prefix,
         'periodLength',
@@ -317,8 +337,7 @@ class HealthProfileStore {
             ) ??
             3;
 
-    bmi =
-        prefs.getDouble(
+    bmi = prefs.getDouble(
       _key(prefix, 'bmi'),
     );
 
@@ -378,8 +397,7 @@ class HealthProfileStore {
 
     if (lastPeriod != null &&
         lastPeriod.isNotEmpty) {
-      lastPeriodDate =
-          DateTime.tryParse(
+      lastPeriodDate = DateTime.tryParse(
         lastPeriod,
       );
     }
@@ -406,15 +424,23 @@ class HealthProfileStore {
   // ============================================================
 
   static Future<void> save() async {
-    final prefs =
-        await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
 
     final uid = _firebaseUid;
 
-    final prefix = uid == null
-        ? _pendingPrefix
-        : _userPrefix(uid);
+    final prefix =
+        uid == null ? _pendingPrefix : _userPrefix(uid);
 
+    await _saveToPrefix(
+      prefs,
+      prefix,
+    );
+  }
+
+  static Future<void> _saveToPrefix(
+    SharedPreferences prefs,
+    String prefix,
+  ) async {
     await prefs.setBool(
       _key(
         prefix,
@@ -608,20 +634,16 @@ class HealthProfileStore {
       return false;
     }
 
-    // IMPORTANT:
-    // Load the pending onboarding data first.
-    // Previously save() was called without loading it,
-    // which could save null values to the new Firebase account.
     await _loadFromPrefix(
       prefs,
       _pendingPrefix,
     );
 
-    // Now save the loaded profile under the
-    // currently authenticated Firebase UID.
-    await save();
+    await _saveToPrefix(
+      prefs,
+      _userPrefix(uid),
+    );
 
-    // Remove only the temporary pending copy.
     await clearPendingProfile();
 
     return true;
@@ -672,6 +694,7 @@ class HealthProfileStore {
       'cycle_length': cycleLength,
       'period_length': periodLength,
       'stress': stress,
+      'stress_level': stress,
       'bmi': bmi,
       'exercise_frequency': exerciseFrequency,
       'sleep_hours': sleepHours,
