@@ -1,3 +1,4 @@
+
 import 'dart:convert';
 
 import 'package:asha_app/services/health_profile_store.dart';
@@ -11,8 +12,6 @@ import '../models/doctor.dart';
 // ============================================================
 
 class ApiService {
-  // IMPORTANT:
-  // Render generated this URL after the latest deployment.
   static const String baseUrl =
       'https://asha-backend-u1y6.onrender.com';
 
@@ -23,30 +22,16 @@ class ApiService {
   static Future<Prediction> fetchPrediction({
     required String userId,
   }) async {
-    final profile =
-        HealthProfileStore.toJson();
+    final profile = HealthProfileStore.toJson();
 
     print('================================');
     print('ASHA ML PREDICTION');
     print('Firebase UID: $userId');
     print('Sending profile: $profile');
     print(
-      'Missing fields: '
-      '${HealthProfileStore.missingPredictionFields}',
-    );
-    print(
       'URL: $baseUrl/predict/$userId',
     );
-
-    // Do not call the ML backend with incomplete
-    // profile data.
-    if (!HealthProfileStore
-        .hasRequiredPredictionData) {
-      throw Exception(
-        'Missing prediction data: '
-        '${HealthProfileStore.missingPredictionFields}',
-      );
-    }
+    print('================================');
 
     try {
       final response = await http
@@ -55,51 +40,54 @@ class ApiService {
               '$baseUrl/predict/$userId',
             ),
             headers: {
-              'Content-Type':
-                  'application/json',
-              'Accept':
-                  'application/json',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
             },
             body: jsonEncode(profile),
           )
           .timeout(
-            const Duration(
-              seconds: 30,
-            ),
+            const Duration(seconds: 30),
           );
 
+      print('================================');
       print(
         'Prediction response: '
         '${response.statusCode}',
       );
-
       print(
         'Prediction body: '
         '${response.body}',
       );
-
       print('================================');
 
       if (response.statusCode != 200) {
         throw Exception(
-          'Prediction failed: '
-          '${response.body}',
+          'Prediction failed: ${response.body}',
         );
       }
 
-      final decoded =
-          jsonDecode(response.body);
+      final decoded = jsonDecode(
+        response.body,
+      );
 
-      if (decoded
-          is! Map<String, dynamic>) {
+      if (decoded is! Map<String, dynamic>) {
         throw Exception(
           'Invalid prediction response.',
         );
       }
 
-      return Prediction.fromJson(
-        decoded,
+      final prediction =
+          Prediction.fromJson(decoded);
+
+      print(
+        'ML prediction parsed successfully.',
       );
+      print(
+        'Predicted next period: '
+        '${prediction.nextPeriodLabel}',
+      );
+
+      return prediction;
     } catch (e) {
       print(
         'Prediction API error: $e',
@@ -116,14 +104,12 @@ class ApiService {
     String userId,
     Map<String, dynamic> log,
   ) async {
-    final response =
-        await http.post(
+    final response = await http.post(
       Uri.parse(
         '$baseUrl/log/$userId',
       ),
       headers: {
-        'Content-Type':
-            'application/json',
+        'Content-Type': 'application/json',
       },
       body: jsonEncode(log),
     );
@@ -161,10 +147,8 @@ class ApiService {
               '$baseUrl/chat',
             ),
             headers: {
-              'Content-Type':
-                  'application/json',
-              'Accept':
-                  'application/json',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
             },
             body: jsonEncode({
               'message': message,
@@ -172,9 +156,7 @@ class ApiService {
             }),
           )
           .timeout(
-            const Duration(
-              seconds: 30,
-            ),
+            const Duration(seconds: 30),
           );
 
       print(
@@ -193,16 +175,14 @@ class ApiService {
 
       if (response.statusCode != 200) {
         throw Exception(
-          'Chat failed: '
-          '${response.body}',
+          'Chat failed: ${response.body}',
         );
       }
 
       final decoded =
           jsonDecode(response.body);
 
-      if (decoded
-          is! Map<String, dynamic>) {
+      if (decoded is! Map<String, dynamic>) {
         throw Exception(
           'Invalid chat response.',
         );
@@ -250,10 +230,8 @@ class ApiService {
               '$baseUrl/find-doctors',
             ),
             headers: {
-              'Content-Type':
-                  'application/json',
-              'Accept':
-                  'application/json',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
             },
             body: jsonEncode({
               'latitude': latitude,
@@ -262,9 +240,7 @@ class ApiService {
             }),
           )
           .timeout(
-            const Duration(
-              seconds: 30,
-            ),
+            const Duration(seconds: 30),
           );
 
       print(
@@ -291,8 +267,7 @@ class ApiService {
       final decoded =
           jsonDecode(response.body);
 
-      if (decoded
-          is! Map<String, dynamic>) {
+      if (decoded is! Map<String, dynamic>) {
         throw Exception(
           'Invalid response format',
         );
@@ -309,8 +284,7 @@ class ApiService {
 
       final facilities =
           rawFacilities
-              .whereType<
-                  Map<String, dynamic>>()
+              .whereType<Map<String, dynamic>>()
               .map(
                 (item) =>
                     Doctor.fromJson(item),
@@ -318,8 +292,7 @@ class ApiService {
               .toList();
 
       print(
-        'Found '
-        '${facilities.length} doctors',
+        'Found ${facilities.length} doctors',
       );
 
       return facilities;
@@ -362,16 +335,13 @@ class ApiService {
           .get(
             uri,
             headers: {
-              'Accept':
-                  'application/json',
+              'Accept': 'application/json',
               'User-Agent':
                   'AshaMenstrualHealthApp/1.0',
             },
           )
           .timeout(
-            const Duration(
-              seconds: 20,
-            ),
+            const Duration(seconds: 20),
           );
 
       print(
@@ -437,9 +407,8 @@ class ApiService {
       }
 
       final displayName =
-          firstResult[
-                  'display_name']
-              ?.toString() ??
+          firstResult['display_name']
+                  ?.toString() ??
               address;
 
       print(
@@ -450,8 +419,7 @@ class ApiService {
       return {
         'lat': latitude,
         'lng': longitude,
-        'display_name':
-            displayName,
+        'display_name': displayName,
       };
     } catch (e) {
       print(
@@ -482,9 +450,7 @@ class ApiService {
             ),
           )
           .timeout(
-            const Duration(
-              seconds: 30,
-            ),
+            const Duration(seconds: 30),
           );
 
       print(
@@ -502,8 +468,7 @@ class ApiService {
       final decoded =
           jsonDecode(response.body);
 
-      if (decoded
-          is! Map<String, dynamic>) {
+      if (decoded is! Map<String, dynamic>) {
         throw Exception(
           'Invalid response format',
         );
@@ -530,3 +495,4 @@ class ApiService {
     }
   }
 }
+
