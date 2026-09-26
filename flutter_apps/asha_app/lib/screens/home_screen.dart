@@ -1,27 +1,23 @@
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 
-import '../theme/asha_theme.dart';
+import '../models/prediction.dart';
 import '../services/api_service.dart';
 import '../services/health_profile_store.dart';
-import '../models/prediction.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() =>
-      _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
   Prediction? prediction;
 
-  bool loading = true;
-  String? error;
+  bool isLoading = true;
 
-  final FirebaseAuth _auth =
-      FirebaseAuth.instance;
+  String userName = '';
 
   @override
   void initState() {
@@ -29,656 +25,1366 @@ class _HomeScreenState extends State<HomeScreen> {
     _load();
   }
 
-  // ==================================================
-  // LOAD
-  // ==================================================
+  // ============================================================
+  // LOAD HOME DATA
+  // ============================================================
 
   Future<void> _load() async {
     try {
       final user =
-          _auth.currentUser;
+          FirebaseAuth.instance.currentUser;
 
       if (user == null) {
-        if (!mounted) return;
-
-        setState(() {
-          error =
-              'Please sign in again.';
-          loading = false;
-        });
+        if (mounted) {
+          setState(() {
+            isLoading = false;
+          });
+        }
 
         return;
       }
 
       await HealthProfileStore.load();
 
-      print(
-        '================================',
-      );
-      print(
-        'Firebase UID: ${user.uid}',
-      );
-      print(
-        'Firebase Name: ${user.displayName}',
-      );
-      print(
-        'Firebase Email: ${user.email}',
-      );
-      print(
-        'Last Period: '
-        '${HealthProfileStore.lastPeriodDate}',
-      );
-      print(
-        '================================',
-      );
-
-      final p =
+      final result =
           await ApiService.fetchPrediction(
         userId: user.uid,
       );
 
-      print('Prediction object created successfully.');
-      print('PCOS Risk: ${p.pcosRisk}');
-      print('Current Day: ${p.currentDay}');
-      print('Phase: ${p.phaseLabel}');
-      print('Confidence: ${p.confidence}');
-      print('Next Period: ${p.nextPeriodLabel}');
-      print('Fertile Window: ${p.fertileWindowLabel}');
-      print('Cycle Progress: ${p.cycleProgress}');
+      if (!mounted) return;
+
+      setState(() {
+        prediction = result;
+
+        userName =
+            HealthProfileStore.userName.isNotEmpty
+                ? HealthProfileStore.userName
+                : (user.displayName ?? 'there');
+
+        isLoading = false;
+      });
+    } catch (e) {
+      debugPrint(
+        'Home load error: $e',
+      );
 
       if (!mounted) return;
 
       setState(() {
-        prediction = p;
-        loading = false;
-      });
-    } catch (e, stackTrace) {
-      print('================================');
-      print('HOME ERROR: $e');
-      print('ERROR TYPE: ${e.runtimeType}');
-      print('STACK TRACE:');
-      print(stackTrace);
-      print('================================');
-
-      if (!mounted) return;
-
-      setState(() {
-        error =
-            'Could not load your data.';
-        loading = false;
+        isLoading = false;
       });
     }
   }
 
-  // ==================================================
-  // GREETING
-  // ==================================================
+  // ============================================================
+  // PERIOD HELPERS
+  // ============================================================
 
-  String _getGreeting() {
-    final hour =
-        DateTime.now().hour;
+  bool _isPeriodDue(
+    Prediction p,
+  ) {
+    final label =
+        p.nextPeriodLabel.toLowerCase();
 
-    if (hour >= 5 && hour < 12) {
-      return 'Good morning';
-    } else if (hour >= 12 &&
-        hour < 17) {
-      return 'Good afternoon';
-    } else if (hour >= 17 &&
-        hour < 21) {
-      return 'Good evening';
+    return label.contains(
+          'period due',
+        ) ||
+        label.contains(
+          'period may be due',
+        );
+  }
+
+  bool _isDueToday(
+    Prediction p,
+  ) {
+    return p.nextPeriodLabel
+        .toLowerCase()
+        .contains(
+          'due today',
+        );
+  }
+
+  String _cycleCenterText(
+    Prediction p,
+  ) {
+    if (_isDueToday(p)) {
+      return 'Period\ndue today';
     }
 
-    return 'Good night';
-  }
-
-  // ==================================================
-  // USER NAME
-  // ==================================================
-
-  String _getUserName() {
-    final user =
-        FirebaseAuth.instance.currentUser;
-
-    final name =
-        user?.displayName?.trim();
-
-    if (name != null &&
-        name.isNotEmpty) {
-      return name;
+    if (_isPeriodDue(p)) {
+      return 'Period may\nbe due';
     }
 
-    return 'there';
+    return 'Day\n${p.currentDay}';
   }
 
-  // ==================================================
-  // USER ID
-  // ==================================================
+  String _cycleSubText(
+    Prediction p,
+  ) {
+    if (_isPeriodDue(p)) {
+      return 'Your period may be starting';
+    }
 
-  String _getUserId() {
-    final user =
-        FirebaseAuth.instance.currentUser;
-
-    return user?.uid ?? '';
+    return p.phaseLabel;
   }
 
-  // ==================================================
+  String _formatNextPeriod(
+    Prediction p,
+  ) {
+    if (p.nextPeriodLabel.isEmpty) {
+      return 'Not available';
+    }
+
+    return p.nextPeriodLabel;
+  }
+
+  // ============================================================
+  // REFRESH
+  // ============================================================
+
+  Future<void> _refresh() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    await _load();
+  }
+
+  // ============================================================
   // UI
-  // ==================================================
+  // ============================================================
 
   @override
-  Widget build(BuildContext context) {
-    if (loading) {
-      return const Center(
-        child:
-            CircularProgressIndicator(),
-      );
-    }
+  Widget build(
+    BuildContext context,
+  ) {
+    final p = prediction;
 
-    if (error != null) {
-      return Center(
-        child: Padding(
-          padding:
-              const EdgeInsets.all(24),
-          child: Text(
-            error!,
-            textAlign:
-                TextAlign.center,
-          ),
-        ),
-      );
-    }
+    return Scaffold(
+      backgroundColor:
+          const Color(0xFFFFF8F3),
 
-    if (prediction == null) {
-      return const Center(
-        child: Text(
-          'No prediction available.',
-        ),
-      );
-    }
-
-    final p = prediction!;
-
-    final userName =
-        _getUserName();
-
-    final userId =
-        _getUserId();
-
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding:
-            const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            // HEADER
-
-            Row(
-              mainAxisAlignment:
-                  MainAxisAlignment
-                      .spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
-                  children: [
-                    Text(
-                      _getGreeting(),
-                      style:
-                          const TextStyle(
-                        color:
-                            AshaColors.slate,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(
-                      height: 2,
-                    ),
-                    Text(
-                      '$userName 🌼',
-                      style:
-                          Theme.of(
-                        context,
-                      )
-                              .textTheme
-                              .displayLarge,
-                    ),
-                  ],
+      body: SafeArea(
+        child: isLoading
+            ? const Center(
+                child:
+                    CircularProgressIndicator(
+                  color:
+                      Color(0xFFD8754E),
                 ),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pushNamed(
-                      context,
-                      '/notifications',
-                    );
-                  },
-                  child:
-                      const CircleAvatar(
-                    backgroundColor:
-                        Colors.white,
-                    child: Icon(
-                      Icons
-                          .notifications_rounded,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(
-              height: 4,
-            ),
-
-            // TEMPORARY UID
-
-            Text(
-              'ID: $userId',
-              style:
-                  const TextStyle(
-                fontSize: 9,
+              )
+            : RefreshIndicator(
                 color:
-                    AshaColors.slate,
-              ),
-            ),
+                    const Color(0xFFD8754E),
 
-            const SizedBox(
-              height: 16,
-            ),
+                backgroundColor:
+                    Colors.white,
 
-            const Center(
-              child: AshaMascot(),
-            ),
+                onRefresh:
+                    _refresh,
 
-            const SizedBox(
-              height: 20,
-            ),
+                child:
+                    SingleChildScrollView(
+                  physics:
+                      const AlwaysScrollableScrollPhysics(),
 
-            // CYCLE RING
+                  padding:
+                      const EdgeInsets.fromLTRB(
+                    20,
+                    18,
+                    20,
+                    30,
+                  ),
 
-            Center(
-              child: GestureDetector(
-                onTap: () {
-                  Navigator.pushNamed(
-                    context,
-                    '/why-prediction',
-                  );
-                },
-                child: SizedBox(
-                  width: 210,
-                  height: 210,
-                  child: Stack(
-                    alignment:
-                        Alignment.center,
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+
                     children: [
-                      CustomPaint(
-                        size:
-                            const Size(
-                          210,
-                          210,
-                        ),
-                        painter:
-                            _RingPainter(
-                          progress:
-                              p.cycleProgress,
-                        ),
-                      ),
 
-                      Column(
-                        mainAxisSize:
-                            MainAxisSize
-                                .min,
+                      // ==================================================
+                      // TOP BAR
+                      // ==================================================
+
+                      Row(
                         children: [
-                          Text(
-                            'Day ${p.currentDay}',
-                            style:
-                                Theme.of(
-                              context,
-                            )
-                                    .textTheme
-                                    .displayLarge,
-                          ),
 
-                          Text(
-                            p.phaseLabel,
-                            style:
-                                const TextStyle(
-                              fontSize:
-                                  12,
-                              color:
-                                  AshaColors.slate,
-                            ),
-                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
 
-                          const SizedBox(
-                            height: 6,
-                          ),
+                              children: [
 
-                          Container(
-                            padding:
-                                const EdgeInsets
-                                    .symmetric(
-                              horizontal:
-                                  12,
-                              vertical: 5,
-                            ),
-                            decoration:
-                                BoxDecoration(
-                              color:
-                                  AshaColors
-                                      .coral,
-                              borderRadius:
-                                  BorderRadius
-                                      .circular(
-                                20,
-                              ),
-                            ),
-                            child:
                                 Text(
-                              'AI confidence ${p.confidence}%',
-                              style:
-                                  const TextStyle(
+                                  'Hello, ${userName.isEmpty ? 'there' : userName}',
+
+                                  style:
+                                      const TextStyle(
+                                    fontSize: 25,
+                                    fontWeight:
+                                        FontWeight.w700,
+                                    color:
+                                        Color(0xFF4A332B),
+                                  ),
+                                ),
+
+                                const SizedBox(
+                                  height: 5,
+                                ),
+
+                                const Text(
+                                  'Take care of yourself today 🌷',
+
+                                  style:
+                                      TextStyle(
+                                    fontSize: 14,
+                                    color:
+                                        Color(0xFF8D7064),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // Notification button
+
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.pushNamed(
+                                context,
+                                '/notifications',
+                              );
+                            },
+
+                            child: Container(
+                              width: 46,
+                              height: 46,
+
+                              decoration:
+                                  BoxDecoration(
                                 color:
-                                    Colors
-                                        .white,
-                                fontSize:
-                                    10,
-                                fontWeight:
-                                    FontWeight
-                                        .bold,
+                                    Colors.white,
+                                shape:
+                                    BoxShape.circle,
+
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black
+                                        .withOpacity(
+                                      0.06,
+                                    ),
+                                    blurRadius:
+                                        10,
+                                    offset:
+                                        const Offset(
+                                      0,
+                                      3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              child: const Icon(
+                                Icons
+                                    .notifications_none_rounded,
+                                color:
+                                    Color(0xFF5D4037),
+                                size: 25,
                               ),
                             ),
                           ),
                         ],
                       ),
+
+                      const SizedBox(
+                        height: 24,
+                      ),
+
+                      // ==================================================
+                      // CYCLE CARD
+                      // ==================================================
+
+                      Container(
+                        width:
+                            double.infinity,
+
+                        padding:
+                            const EdgeInsets.all(
+                          22,
+                        ),
+
+                        decoration:
+                            BoxDecoration(
+                          color:
+                              const Color(
+                            0xFFFFE9DC,
+                          ),
+                          borderRadius:
+                              BorderRadius.circular(
+                            28,
+                          ),
+                        ),
+
+                        child: Column(
+                          children: [
+
+                            const Text(
+                              'Your cycle',
+
+                              style:
+                                  TextStyle(
+                                fontSize: 16,
+                                fontWeight:
+                                    FontWeight.w600,
+                                color:
+                                    Color(0xFF795548),
+                              ),
+                            ),
+
+                            const SizedBox(
+                              height: 18,
+                            ),
+
+                            // ==================================================
+                            // CYCLE RING
+                            // ==================================================
+
+                            SizedBox(
+                              width: 205,
+                              height: 205,
+
+                              child: Stack(
+                                alignment:
+                                    Alignment.center,
+
+                                children: [
+
+                                  SizedBox(
+                                    width: 190,
+                                    height: 190,
+
+                                    child:
+                                        CircularProgressIndicator(
+                                      value: p == null
+                                          ? 0
+                                          : p.cycleProgress
+                                              .clamp(
+                                              0.0,
+                                              1.0,
+                                            ),
+
+                                      strokeWidth:
+                                          13,
+
+                                      backgroundColor:
+                                          Colors.white
+                                              .withOpacity(
+                                        0.75,
+                                      ),
+
+                                      valueColor:
+                                          const AlwaysStoppedAnimation<
+                                              Color>(
+                                        Color(
+                                          0xFFD8754E,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+
+                                  if (p != null)
+                                    Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment
+                                              .center,
+
+                                      children: [
+
+                                        Text(
+                                          _cycleCenterText(
+                                            p,
+                                          ),
+
+                                          textAlign:
+                                              TextAlign
+                                                  .center,
+
+                                          style:
+                                              TextStyle(
+                                            fontSize:
+                                                _isPeriodDue(
+                                              p,
+                                            )
+                                                    ? 20
+                                                    : 31,
+
+                                            height:
+                                                1.15,
+
+                                            fontWeight:
+                                                FontWeight
+                                                    .w700,
+
+                                            color:
+                                                const Color(
+                                              0xFF4A332B,
+                                            ),
+                                          ),
+                                        ),
+
+                                        const SizedBox(
+                                          height: 8,
+                                        ),
+
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets
+                                                  .symmetric(
+                                            horizontal:
+                                                18,
+                                          ),
+
+                                          child:
+                                              Text(
+                                            _cycleSubText(
+                                              p,
+                                            ),
+
+                                            textAlign:
+                                                TextAlign
+                                                    .center,
+
+                                            style:
+                                                const TextStyle(
+                                              fontSize:
+                                                  13,
+                                              color:
+                                                  Color(
+                                                0xFF8D7064,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(
+                              height: 20,
+                            ),
+
+                            // ==================================================
+                            // MODEL INFORMATION
+                            // ==================================================
+
+                            if (p != null)
+                              Container(
+                                padding:
+                                    const EdgeInsets
+                                        .symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+
+                                decoration:
+                                    BoxDecoration(
+                                  color: Colors.white
+                                      .withOpacity(
+                                    0.7,
+                                  ),
+
+                                  borderRadius:
+                                      BorderRadius
+                                          .circular(
+                                    20,
+                                  ),
+                                ),
+
+                                child: Row(
+                                  mainAxisSize:
+                                      MainAxisSize.min,
+
+                                  children: [
+
+                                    const Icon(
+                                      Icons
+                                          .auto_awesome,
+                                      size: 16,
+                                      color:
+                                          Color(
+                                        0xFFD8754E,
+                                      ),
+                                    ),
+
+                                    const SizedBox(
+                                      width: 7,
+                                    ),
+
+                                    Text(
+                                      'ML prediction: '
+                                      '${p.predictedCycleLength} days',
+
+                                      style:
+                                          const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight:
+                                            FontWeight
+                                                .w600,
+                                        color:
+                                            Color(
+                                          0xFF795548,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height: 18,
+                      ),
+
+                      // ==================================================
+                      // NEXT PERIOD + FERTILE WINDOW
+                      // ==================================================
+
+                      Row(
+                        children: [
+
+                          Expanded(
+                            child: _InfoCard(
+                              icon: Icons
+                                  .calendar_month_rounded,
+
+                              title:
+                                  'Next period',
+
+                              value: p == null
+                                  ? 'Not available'
+                                  : _formatNextPeriod(
+                                      p,
+                                    ),
+                            ),
+                          ),
+
+                          const SizedBox(
+                            width: 12,
+                          ),
+
+                          Expanded(
+                            child: _InfoCard(
+                              icon: Icons
+                                  .favorite_border_rounded,
+
+                              title:
+                                  'Fertile window',
+
+                              value: p == null
+                                  ? 'Not available'
+                                  : p
+                                      .fertileWindowLabel,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(
+                        height: 18,
+                      ),
+
+                      // ==================================================
+                      // MODEL INFORMATION CARD
+                      // ==================================================
+
+                      if (p != null &&
+                          p.factorWeights.isNotEmpty)
+                        _ModelFactorsCard(
+                          factors:
+                              p.factorWeights,
+                        ),
+
+                      if (p != null &&
+                          p.factorWeights.isNotEmpty)
+                        const SizedBox(
+                          height: 18,
+                        ),
+
+                      // ==================================================
+                      // PCOS WELLNESS INFORMATION
+                      // ==================================================
+
+                      if (p != null &&
+                          p.pcosRisk ==
+                              'Reported PCOS')
+                        Container(
+                          width:
+                              double.infinity,
+
+                          padding:
+                              const EdgeInsets.all(
+                            18,
+                          ),
+
+                          decoration:
+                              BoxDecoration(
+                            color:
+                                Colors.white,
+
+                            borderRadius:
+                                BorderRadius.circular(
+                              22,
+                            ),
+
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black
+                                    .withOpacity(
+                                  0.04,
+                                ),
+                                blurRadius:
+                                    12,
+                                offset:
+                                    const Offset(
+                                  0,
+                                  4,
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          child: Row(
+                            crossAxisAlignment:
+                                CrossAxisAlignment
+                                    .start,
+
+                            children: [
+
+                              Container(
+                                width: 44,
+                                height: 44,
+
+                                decoration:
+                                    BoxDecoration(
+                                  color:
+                                      const Color(
+                                    0xFFFFE9DC,
+                                  ),
+
+                                  borderRadius:
+                                      BorderRadius
+                                          .circular(
+                                    14,
+                                  ),
+                                ),
+
+                                child: const Icon(
+                                  Icons
+                                      .favorite_outline_rounded,
+                                  color:
+                                      Color(
+                                    0xFFD8754E,
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(
+                                width: 13,
+                              ),
+
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment
+                                          .start,
+
+                                  children: [
+
+                                    const Text(
+                                      'Wellness information',
+
+                                      style:
+                                          TextStyle(
+                                        fontSize: 16,
+                                        fontWeight:
+                                            FontWeight
+                                                .w700,
+                                        color:
+                                            Color(
+                                          0xFF4A332B,
+                                        ),
+                                      ),
+                                    ),
+
+                                    const SizedBox(
+                                      height: 5,
+                                    ),
+
+                                    const Text(
+                                      'You have reported PCOS in your health profile. This information is considered by the cycle prediction model. It is not a PCOS diagnosis or risk prediction.',
+
+                                      style:
+                                          TextStyle(
+                                        fontSize: 13,
+                                        height: 1.4,
+                                        color:
+                                            Color(
+                                          0xFF8D7064,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      const SizedBox(
+                        height: 18,
+                      ),
+
+                      // ==================================================
+                      // QUICK ACTIONS
+                      // ==================================================
+
+                      const Text(
+                        'Quick actions',
+
+                        style:
+                            TextStyle(
+                          fontSize: 19,
+                          fontWeight:
+                              FontWeight.w700,
+                          color:
+                              Color(0xFF4A332B),
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height: 12,
+                      ),
+
+                      Row(
+                        children: [
+
+                          Expanded(
+                            child: _ActionCard(
+                              icon: Icons
+                                  .water_drop_outlined,
+
+                              title:
+                                  'Log discharge',
+
+                              onTap: () {
+                                Navigator
+                                    .pushNamed(
+                                  context,
+                                  '/discharge',
+                                );
+                              },
+                            ),
+                          ),
+
+                          const SizedBox(
+                            width: 12,
+                          ),
+
+                          Expanded(
+                            child: _ActionCard(
+                              icon: Icons
+                                  .medical_services_outlined,
+
+                              title:
+                                  'Find doctor',
+
+                              onTap: () {
+                                Navigator
+                                    .pushNamed(
+                                  context,
+                                  '/find-doctor',
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(
+                        height: 12,
+                      ),
+
+                      Row(
+                        children: [
+
+                          Expanded(
+                            child: _ActionCard(
+                              icon:
+                                  Icons.edit_note_rounded,
+
+                              title:
+                                  'Quick log',
+
+                              onTap: () {
+                                Navigator
+                                    .pushNamed(
+                                  context,
+                                  '/quick-log',
+                                );
+                              },
+                            ),
+                          ),
+
+                          const SizedBox(
+                            width: 12,
+                          ),
+
+                          Expanded(
+                            child: _ActionCard(
+                              icon: Icons
+                                  .menu_book_outlined,
+
+                              title:
+                                  'Health library',
+
+                              onTap: () {
+                                Navigator
+                                    .pushNamed(
+                                  context,
+                                  '/article',
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(
+                        height: 25,
+                      ),
+
+                      // ==================================================
+                      // BOTTOM MESSAGE
+                      // ==================================================
+
+                      Container(
+                        width:
+                            double.infinity,
+
+                        padding:
+                            const EdgeInsets.all(
+                          18,
+                        ),
+
+                        decoration:
+                            BoxDecoration(
+                          color:
+                              const Color(
+                            0xFFFFF1E8,
+                          ),
+
+                          borderRadius:
+                              BorderRadius.circular(
+                            22,
+                          ),
+                        ),
+
+                        child: Row(
+                          children: [
+
+                            const Text(
+                              '🌸',
+                              style:
+                                  TextStyle(
+                                fontSize: 28,
+                              ),
+                            ),
+
+                            const SizedBox(
+                              width: 12,
+                            ),
+
+                            Expanded(
+                              child: Text(
+                                _isPeriodDue(
+                                  p ??
+                                      _emptyPrediction(),
+                                )
+                                    ? 'Listen to your body and take care of yourself today.'
+                                    : 'Your body is unique. Keep tracking to understand your cycle better.',
+
+                                style:
+                                    const TextStyle(
+                                  fontSize: 13,
+                                  height: 1.4,
+                                  color:
+                                      Color(
+                                    0xFF795548,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // EMPTY PREDICTION
+  // ============================================================
+
+  Prediction _emptyPrediction() {
+    return Prediction(
+      currentDay: 1,
+      phaseLabel: '',
+      nextPeriodLabel: '',
+      fertileWindowLabel: '',
+      cycleProgress: 0,
+      factorWeights: const {},
+      pcosRisk: 'No PCOS reported',
+      avgCycleLength: 28,
+      avgPeriodLength: 5,
+      cycleLengthHistory: const [],
+      predictedCycleLength: 28,
+    );
+  }
+}
+
+
+// ================================================================
+// MODEL FACTORS CARD
+// ================================================================
+
+class _ModelFactorsCard extends StatelessWidget {
+  final Map<String, double> factors;
+
+  const _ModelFactorsCard({
+    required this.factors,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final entries =
+        factors.entries.toList();
+
+    entries.sort(
+      (a, b) =>
+          b.value.compareTo(
+        a.value,
+      ),
+    );
+
+    return Container(
+      width:
+          double.infinity,
+
+      padding:
+          const EdgeInsets.all(
+        18,
+      ),
+
+      decoration:
+          BoxDecoration(
+        color:
+            Colors.white,
+
+        borderRadius:
+            BorderRadius.circular(
+          22,
+        ),
+
+        boxShadow: [
+          BoxShadow(
+            color:
+                Colors.black.withOpacity(
+              0.04,
             ),
-
-            const SizedBox(
-              height: 20,
+            blurRadius:
+                12,
+            offset:
+                const Offset(
+              0,
+              4,
             ),
+          ),
+        ],
+      ),
 
-            // NEXT PERIOD + FERTILE WINDOW
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
 
-            Row(
-              children: [
-                Expanded(
-                  child: AshaCard(
-                    tint:
-                        AshaColors.mint,
-                    child: _stat(
-                      '🩸 NEXT PERIOD',
-                      p.nextPeriodLabel,
-                    ),
-                  ),
+        children: [
+
+          const Text(
+            'What the model uses',
+
+            style:
+                TextStyle(
+              fontSize: 16,
+              fontWeight:
+                  FontWeight.w700,
+              color:
+                  Color(0xFF4A332B),
+            ),
+          ),
+
+          const SizedBox(
+            height: 5,
+          ),
+
+          const Text(
+            'These values show the Decision Tree feature importance from the trained model. They describe how the model uses the input features; they do not mean that one factor causes a cycle change.',
+
+            style:
+                TextStyle(
+              fontSize: 12,
+              height: 1.4,
+              color:
+                  Color(0xFF8D7064),
+            ),
+          ),
+
+          const SizedBox(
+            height: 15,
+          ),
+
+          ...entries.map(
+            (entry) {
+
+              final value =
+                  entry.value.clamp(
+                0.0,
+                1.0,
+              );
+
+              return Padding(
+                padding:
+                    const EdgeInsets.only(
+                  bottom: 12,
                 ),
 
-                const SizedBox(
-                  width: 12,
-                ),
-
-                Expanded(
-                  child: AshaCard(
-                    tint:
-                        AshaColors.sky,
-                    child: _stat(
-                      '🌱 FERTILE WINDOW',
-                      p.fertileWindowLabel,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(
-              height: 4,
-            ),
-
-            // DISCHARGE
-
-            GestureDetector(
-              onTap: () {
-                Navigator.pushNamed(
-                  context,
-                  '/discharge',
-                );
-              },
-              child: AshaCard(
-                tint:
-                    AshaColors.sun,
-                child:
-                    const Text(
-                  '💧 Log discharge',
-                  style:
-                      TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ),
-
-            // DOCTOR
-
-            GestureDetector(
-              onTap: () {
-                Navigator.pushNamed(
-                  context,
-                  '/find-doctor',
-                );
-              },
-              child: AshaCard(
-                child:
-                    const Text(
-                  '🩺 Find a doctor nearby',
-                  style:
-                      TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-            ),
-
-            // PCOS
-
-            if (p.pcosRisk == 'Moderate' ||
-                p.pcosRisk == 'High')
-              AshaCard(
                 child: Column(
                   crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
+                      CrossAxisAlignment.start,
+
                   children: [
-                    const Text(
-                      '⚠ Wellness signal',
-                      style:
-                          TextStyle(
-                        color:
-                            AshaColors
-                                .alert,
-                        fontWeight:
-                            FontWeight
-                                .bold,
-                        fontSize: 12,
-                      ),
+
+                    Row(
+                      children: [
+
+                        Expanded(
+                          child: Text(
+                            entry.key,
+
+                            style:
+                                const TextStyle(
+                              fontSize: 13,
+                              fontWeight:
+                                  FontWeight.w600,
+                              color:
+                                  Color(
+                                0xFF5D4037,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        Text(
+                          '${(value * 100).toStringAsFixed(1)}%',
+
+                          style:
+                              const TextStyle(
+                            fontSize: 12,
+                            fontWeight:
+                                FontWeight.w600,
+                            color:
+                                Color(
+                              0xFFD8754E,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
 
                     const SizedBox(
-                      height: 4,
+                      height: 6,
                     ),
 
-                    const Text(
-                      'Your patterns shifted from your baseline. Worth a conversation with a doctor.',
-                      style:
-                          TextStyle(
-                        fontSize: 12,
+                    ClipRRect(
+                      borderRadius:
+                          BorderRadius.circular(
+                        10,
                       ),
-                    ),
 
-                    const SizedBox(
-                      height: 8,
-                    ),
-
-                    ElevatedButton(
-                      style:
-                          ElevatedButton
-                              .styleFrom(
-                        backgroundColor:
-                            AshaColors
-                                .coral,
-                      ),
-                      onPressed: () {
-                        Navigator
-                            .pushNamed(
-                          context,
-                          '/find-doctor',
-                        );
-                      },
                       child:
-                          const Text(
-                        'Find a doctor',
-                        style:
-                            TextStyle(
-                          color:
-                              Colors
-                                  .white,
-                          fontSize:
-                              12,
+                          LinearProgressIndicator(
+                        value:
+                            value,
+
+                        minHeight:
+                            7,
+
+                        backgroundColor:
+                            const Color(
+                          0xFFFFE9DC,
+                        ),
+
+                        valueColor:
+                            const AlwaysStoppedAnimation<
+                                Color>(
+                          Color(
+                            0xFFD8754E,
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
-              ),
-          ],
-        ),
+              );
+            },
+          ),
+        ],
       ),
-    );
-  }
-
-  // ==================================================
-  // STAT
-  // ==================================================
-
-  Widget _stat(
-    String label,
-    String value,
-  ) {
-    return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style:
-              const TextStyle(
-            fontSize: 11,
-            fontWeight:
-                FontWeight.bold,
-          ),
-        ),
-
-        const SizedBox(
-          height: 4,
-        ),
-
-        Text(
-          value,
-          style:
-              const TextStyle(
-            fontWeight:
-                FontWeight.bold,
-            fontSize: 15,
-          ),
-        ),
-      ],
     );
   }
 }
 
-// ============================================================
-// CYCLE RING
-// ============================================================
 
-class _RingPainter
-    extends CustomPainter {
-  final double progress;
+// ================================================================
+// INFO CARD
+// ================================================================
 
-  _RingPainter({
-    required this.progress,
+class _InfoCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String value;
+
+  const _InfoCard({
+    required this.icon,
+    required this.title,
+    required this.value,
   });
 
   @override
-  void paint(
-    Canvas canvas,
-    Size size,
+  Widget build(
+    BuildContext context,
   ) {
-    final center =
-        size.center(
-      Offset.zero,
-    );
-
-    final radius =
-        size.width / 2 - 10;
-
-    final bg = Paint()
-      ..color =
-          AshaColors.peach
-      ..strokeWidth = 14
-      ..style =
-          PaintingStyle.stroke
-      ..strokeCap =
-          StrokeCap.round;
-
-    canvas.drawCircle(
-      center,
-      radius,
-      bg,
-    );
-
-    final fg = Paint()
-      ..shader =
-          const LinearGradient(
-        colors: [
-          AshaColors.coral,
-          AshaColors.coralDark,
-        ],
-      ).createShader(
-        Rect.fromCircle(
-          center: center,
-          radius: radius,
-        ),
-      )
-      ..strokeWidth = 14
-      ..style =
-          PaintingStyle.stroke
-      ..strokeCap =
-          StrokeCap.round;
-
-    canvas.drawArc(
-      Rect.fromCircle(
-        center: center,
-        radius: radius,
+    return Container(
+      padding:
+          const EdgeInsets.all(
+        16,
       ),
-      -1.5708,
-      6.2832 * progress,
-      false,
-      fg,
+
+      decoration:
+          BoxDecoration(
+        color:
+            Colors.white,
+
+        borderRadius:
+            BorderRadius.circular(
+          20,
+        ),
+
+        boxShadow: [
+          BoxShadow(
+            color:
+                Colors.black.withOpacity(
+              0.035,
+            ),
+            blurRadius:
+                10,
+            offset:
+                const Offset(
+              0,
+              3,
+            ),
+          ),
+        ],
+      ),
+
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+
+        children: [
+
+          Icon(
+            icon,
+            size: 22,
+            color:
+                const Color(
+              0xFFD8754E,
+            ),
+          ),
+
+          const SizedBox(
+            height: 10,
+          ),
+
+          Text(
+            title,
+
+            style:
+                const TextStyle(
+              fontSize: 12,
+              color:
+                  Color(0xFF9A8176),
+            ),
+          ),
+
+          const SizedBox(
+            height: 5,
+          ),
+
+          Text(
+            value,
+
+            maxLines: 2,
+
+            overflow:
+                TextOverflow.ellipsis,
+
+            style:
+                const TextStyle(
+              fontSize: 14,
+              fontWeight:
+                  FontWeight.w700,
+              color:
+                  Color(0xFF4A332B),
+            ),
+          ),
+        ],
+      ),
     );
   }
+}
+
+
+// ================================================================
+// ACTION CARD
+// ================================================================
+
+class _ActionCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+
+  const _ActionCard({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
 
   @override
-  bool shouldRepaint(
-    covariant _RingPainter old,
+  Widget build(
+    BuildContext context,
   ) {
-    return old.progress !=
-        progress;
+    return GestureDetector(
+      onTap:
+          onTap,
+
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 16,
+        ),
+
+        decoration:
+            BoxDecoration(
+          color:
+              Colors.white,
+
+          borderRadius:
+              BorderRadius.circular(
+            20,
+          ),
+
+          boxShadow: [
+            BoxShadow(
+              color:
+                  Colors.black.withOpacity(
+                0.035,
+              ),
+              blurRadius:
+                  10,
+              offset:
+                  const Offset(
+                0,
+                3,
+              ),
+            ),
+          ],
+        ),
+
+        child: Row(
+          children: [
+
+            Container(
+              width: 42,
+              height: 42,
+
+              decoration:
+                  BoxDecoration(
+                color:
+                    const Color(
+                  0xFFFFE9DC,
+                ),
+
+                borderRadius:
+                    BorderRadius.circular(
+                  13,
+                ),
+              ),
+
+              child: Icon(
+                icon,
+                color:
+                    const Color(
+                  0xFFD8754E,
+                ),
+                size: 22,
+              ),
+            ),
+
+            const SizedBox(
+              width: 10,
+            ),
+
+            Expanded(
+              child: Text(
+                title,
+
+                maxLines:
+                    2,
+
+                style:
+                    const TextStyle(
+                  fontSize: 13,
+                  fontWeight:
+                      FontWeight.w600,
+                  color:
+                      Color(0xFF5D4037),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

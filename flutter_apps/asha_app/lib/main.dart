@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -36,34 +37,30 @@ import 'screens/exercise_screen.dart';
 
 
 void main() async {
-
   WidgetsFlutterBinding.ensureInitialized();
 
-
-  // ==========================================================
-  // FIREBASE
-  // ==========================================================
-
   await Firebase.initializeApp(
-    options:
-        DefaultFirebaseOptions.currentPlatform,
+    options: DefaultFirebaseOptions.currentPlatform,
   );
 
-
+  // Load only the profile belonging to the currently
+  // authenticated Firebase account.
   await HealthProfileStore.load();
+
   await NotificationService.init();
-  await NotificationService.scheduleCycleNotification();
 
+  final user = FirebaseAuth.instance.currentUser;
 
-  // ==========================================================
-  // START APP
-  // ==========================================================
+  if (user != null) {
+    await NotificationService.scheduleCycleNotification();
+  } else {
+    // If nobody is logged in, there must be no
+    // scheduled notification left from another account.
+    await NotificationService.cancelAll();
+  }
 
-  runApp(
-    const AshaApp(),
-  );
+  runApp(const AshaApp());
 }
-
 
 class AshaApp
     extends StatelessWidget {

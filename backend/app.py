@@ -4,9 +4,10 @@ import joblib
 import pandas as pd
 import requests
 import os
+import re
 from openai import OpenAI
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 # ============================================================
@@ -62,6 +63,12 @@ SYSTEM_PROMPT = (
 
     "Use conversation history to understand what the user means. "
 
+    "IMPORTANT: Return ONLY the final answer intended for the user. "
+    "Do not reveal internal reasoning, chain-of-thought, hidden "
+    "thoughts, analysis, deliberation, planning, or reasoning steps. "
+    "Do not use <think> tags. Do not write sections such as "
+    "'Thinking', 'Reasoning', or 'Analysis'. "
+
     "You are not a doctor and must never diagnose a medical "
     "condition. "
 
@@ -72,6 +79,8 @@ SYSTEM_PROMPT = (
     "If the user describes severe, persistent, unusual, or "
     "potentially dangerous symptoms, recommend consulting "
     "a qualified healthcare professional. "
+
+    "Do not prescribe medication or provide medication dosages. "
 
     "Be warm, empathetic, clear, and easy to understand. "
 
@@ -94,18 +103,56 @@ MODEL_PATH = os.path.join(
 )
 
 try:
-    model = joblib.load(MODEL_PATH)
-    print("ML model loaded successfully.")
+
+    model = joblib.load(
+        MODEL_PATH
+    )
+
+    print(
+        "ML model loaded successfully."
+    )
+
 except Exception as e:
+
     model = None
-    print("Could not load ML model:", e)
+
+    print(
+        "Could not load ML model:",
+        e
+    )
+
+
+# ============================================================
+# MODEL FEATURE ORDER
+# IMPORTANT:
+# This MUST match the feature order used when the model
+# was trained.
+# ============================================================
+
+FEATURE_ORDER = [
+
+    "Cycle Length",
+    "Period Length",
+    "Age",
+    "BMI",
+    "Stress Level",
+    "Exercise Frequency",
+    "Sleep Hours",
+    "Diet",
+    "PCOS"
+
+]
 
 
 # ============================================================
 # HELPER FUNCTIONS
 # ============================================================
 
-def get_number(data, key, default=None):
+def get_number(
+    data,
+    key,
+    default=None
+):
 
     value = data.get(
         key,
@@ -116,13 +163,24 @@ def get_number(data, key, default=None):
         return default
 
     try:
-        return float(value)
 
-    except (TypeError, ValueError):
+        return float(
+            value
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
         return default
 
 
-def get_int(data, key, default=None):
+def get_int(
+    data,
+    key,
+    default=None
+):
 
     value = data.get(
         key,
@@ -133,33 +191,46 @@ def get_int(data, key, default=None):
         return default
 
     try:
+
         return int(
             float(value)
         )
 
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError
+    ):
+
         return default
 
 
 def encode_exercise(value):
 
     if value is None:
+
         return 1
 
     if isinstance(
         value,
         (int, float)
     ):
-        return int(value)
+
+        return int(
+            value
+        )
 
     value = str(
         value
     ).strip().lower()
 
     mapping = {
+
         "low": 0,
+
         "moderate": 1,
+
         "high": 2
+
     }
 
     return mapping.get(
@@ -171,29 +242,202 @@ def encode_exercise(value):
 def encode_diet(value):
 
     if value is None:
+
         return 0
 
     if isinstance(
         value,
         (int, float)
     ):
-        return int(value)
+
+        return int(
+            value
+        )
 
     value = str(
         value
     ).strip().lower()
 
     mapping = {
+
         "low carb": 0,
+
         "balanced": 1,
+
         "vegetarian": 2,
+
         "high protein": 3
+
     }
 
     return mapping.get(
         value,
         0
     )
+
+
+# ============================================================
+# GET ACTUAL DECISION TREE FEATURE IMPORTANCE
+# ============================================================
+
+def get_model_feature_importance():
+
+    importance = {}
+
+    try:
+
+        if model is None:
+
+            return importance
+
+        values = getattr(
+            model,
+            "feature_importances_",
+            None
+        )
+
+        if values is None:
+
+            return importance
+
+        if len(values) != len(FEATURE_ORDER):
+
+            print(
+                "Feature importance length does not match "
+                "FEATURE_ORDER."
+            )
+
+            return importance
+
+        for index, feature in enumerate(
+            FEATURE_ORDER
+        ):
+
+            importance[feature] = round(
+                float(
+                    values[index]
+                ),
+                4
+            )
+
+    except Exception as e:
+
+        print(
+            "Could not read model feature importance:",
+            e
+        )
+
+    return importance
+
+
+# ============================================================
+# CONVERT FEATURE NAMES INTO USER-FRIENDLY NAMES
+# ============================================================
+
+FRIENDLY_FEATURE_NAMES = {
+
+    "Cycle Length":
+        "Cycle length",
+
+    "Period Length":
+        "Period length",
+
+    "Age":
+        "Age",
+
+    "BMI":
+        "BMI",
+
+    "Stress Level":
+        "Stress",
+
+    "Exercise Frequency":
+        "Exercise",
+
+    "Sleep Hours":
+        "Sleep",
+
+    "Diet":
+        "Diet",
+
+    "PCOS":
+        "PCOS information"
+
+}
+
+
+def friendly_feature_name(
+    feature_name
+):
+
+    return FRIENDLY_FEATURE_NAMES.get(
+        feature_name,
+        feature_name
+    )
+
+
+# ============================================================
+# CLEAN AI RESPONSE
+# ============================================================
+
+def clean_ai_response(
+    text
+):
+
+    if not text:
+
+        return (
+            "Sorry, I couldn't generate a response "
+            "right now. Please try again."
+        )
+
+    text = str(
+        text
+    ).strip()
+
+    # --------------------------------------------------------
+    # Remove <think>...</think> blocks
+    # --------------------------------------------------------
+
+    text = re.sub(
+        r"<think>.*?</think>",
+        "",
+        text,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+
+    # --------------------------------------------------------
+    # Remove common reasoning prefixes
+    # --------------------------------------------------------
+
+    text = re.sub(
+        r"^\s*(thinking|reasoning|analysis)\s*:\s*.*?\n",
+        "",
+        text,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+
+    # --------------------------------------------------------
+    # Remove accidental "final answer" heading
+    # --------------------------------------------------------
+
+    text = re.sub(
+        r"^\s*(final answer|final response)\s*:\s*",
+        "",
+        text,
+        flags=re.IGNORECASE
+    )
+
+    text = text.strip()
+
+    if not text:
+
+        return (
+            "Sorry, I couldn't generate a response "
+            "right now. Please try again."
+        )
+
+    return text
 
 
 # ============================================================
@@ -222,15 +466,19 @@ def home():
     "/predict/<user_id>",
     methods=["POST"]
 )
-def predict(user_id):
+def predict(
+    user_id
+):
 
     try:
 
         if model is None:
 
             return jsonify({
+
                 "error":
                     "ML model is not loaded"
+
             }), 500
 
         data = request.get_json()
@@ -238,9 +486,16 @@ def predict(user_id):
         if not data:
 
             return jsonify({
+
                 "error":
                     "No user data received"
+
             }), 400
+
+
+        # ====================================================
+        # READ USER INPUT
+        # ====================================================
 
         age = get_int(
             data,
@@ -293,16 +548,30 @@ def predict(user_id):
             )
         )
 
+
+        # ====================================================
+        # REQUIRED DATA
+        # ====================================================
+
         missing = []
 
         if age is None:
-            missing.append("age")
+
+            missing.append(
+                "age"
+            )
 
         if cycle_length is None:
-            missing.append("cycle_length")
+
+            missing.append(
+                "cycle_length"
+            )
 
         if period_length is None:
-            missing.append("period_length")
+
+            missing.append(
+                "period_length"
+            )
 
         if missing:
 
@@ -315,6 +584,11 @@ def predict(user_id):
                     missing
 
             }), 400
+
+
+        # ====================================================
+        # BUILD MODEL INPUT
+        # ====================================================
 
         raw = {
 
@@ -347,23 +621,17 @@ def predict(user_id):
 
         }
 
-        feature_order = [
-
-            "Cycle Length",
-            "Period Length",
-            "Age",
-            "BMI",
-            "Stress Level",
-            "Exercise Frequency",
-            "Sleep Hours",
-            "Diet",
-            "PCOS"
-
-        ]
 
         features = pd.DataFrame(
             [raw]
-        )[feature_order]
+        )[
+            FEATURE_ORDER
+        ]
+
+
+        # ====================================================
+        # DECISION TREE PREDICTION
+        # ====================================================
 
         predicted_cycle_length = float(
             model.predict(
@@ -378,11 +646,40 @@ def predict(user_id):
             )
         )
 
+
+        # ====================================================
+        # ACTUAL MODEL FEATURE IMPORTANCE
+        # ====================================================
+
+        raw_importance = (
+            get_model_feature_importance()
+        )
+
+        factor_weights = {}
+
+        for feature, value in raw_importance.items():
+
+            factor_weights[
+                friendly_feature_name(
+                    feature
+                )
+            ] = value
+
+
+        # ====================================================
+        # LAST PERIOD DATE
+        # ====================================================
+
         last_period_date = data.get(
             "last_period_date"
         )
 
         current_day = 1
+
+        today_date = datetime.now().date()
+
+        expected_period_date = None
+
 
         if last_period_date:
 
@@ -405,8 +702,10 @@ def predict(user_id):
 
                     today = datetime.now()
 
+                today_date = today.date()
+
                 current_day = (
-                    today.date()
+                    today_date
                     -
                     last_date.date()
                 ).days + 1
@@ -414,6 +713,18 @@ def predict(user_id):
                 current_day = max(
                     1,
                     current_day
+                )
+
+                # Period begins predicted cycle length
+                # days after the first day of the
+                # previous period.
+
+                expected_period_date = (
+                    last_date.date()
+                    +
+                    timedelta(
+                        days=predicted_cycle_length
+                    )
                 )
 
             except Exception as e:
@@ -425,8 +736,14 @@ def predict(user_id):
 
                 current_day = 1
 
+
+        # ====================================================
+        # CYCLE PROGRESS
+        # ====================================================
+
         cycle_progress = (
-            current_day /
+            current_day
+            /
             predicted_cycle_length
         )
 
@@ -438,13 +755,37 @@ def predict(user_id):
             )
         )
 
-        days_until_period = (
-            predicted_cycle_length
-            -
-            current_day
-        )
 
-        if days_until_period <= 0:
+        # ====================================================
+        # NEXT PERIOD
+        # ====================================================
+
+        if expected_period_date is not None:
+
+            days_until_period = (
+                expected_period_date
+                -
+                today_date
+            ).days
+
+        else:
+
+            days_until_period = (
+                predicted_cycle_length
+                -
+                current_day
+                +
+                1
+            )
+
+
+        if days_until_period == 0:
+
+            next_period_label = (
+                "Period due today"
+            )
+
+        elif days_until_period < 0:
 
             next_period_label = (
                 "Period may be due"
@@ -455,6 +796,11 @@ def predict(user_id):
             next_period_label = (
                 f"In {days_until_period} days"
             )
+
+
+        # ====================================================
+        # CYCLE PHASE
+        # ====================================================
 
         if current_day <= 5:
 
@@ -480,31 +826,60 @@ def predict(user_id):
                 "Luteal phase"
             )
 
-        ovulation_day = (
-            predicted_cycle_length
-            -
-            14
+
+        # ====================================================
+        # FERTILE WINDOW
+        # ====================================================
+
+        ovulation_day = max(
+            1,
+            predicted_cycle_length - 14
         )
 
-        fertile_start = (
+        fertile_start = max(
+            1,
+            ovulation_day - 5
+        )
+
+        fertile_end = max(
+            1,
             ovulation_day
-            -
-            5
         )
-
-        fertile_end = ovulation_day
 
         fertile_window_label = (
             f"Cycle days "
-            f"{max(1, fertile_start)}–"
-            f"{max(1, fertile_end)}"
+            f"{fertile_start}–"
+            f"{fertile_end}"
         )
 
-        pcos_risk = (
-            True
-            if pcos == 1
-            else False
-        )
+
+        # ====================================================
+        # PCOS INFORMATION
+        #
+        # IMPORTANT:
+        # The model is predicting cycle length.
+        # It is NOT a PCOS classifier.
+        #
+        # Therefore we do not call this a "PCOS risk".
+        # We simply return the user's supplied PCOS status.
+        # ====================================================
+
+        if pcos == 1:
+
+            pcos_status = (
+                "Reported PCOS"
+            )
+
+        else:
+
+            pcos_status = (
+                "No PCOS reported"
+            )
+
+
+        # ====================================================
+        # RESPONSE
+        # ====================================================
 
         return jsonify({
 
@@ -516,9 +891,6 @@ def predict(user_id):
 
             "phase_label":
                 phase_label,
-
-            "confidence":
-                87,
 
             "next_period_label":
                 next_period_label,
@@ -532,24 +904,11 @@ def predict(user_id):
             "predicted_cycle_length":
                 predicted_cycle_length,
 
-            "factor_weights": {
-
-                "sleep":
-                    0.70,
-
-                "stress":
-                    0.55,
-
-                "exercise":
-                    0.30,
-
-                "history":
-                    0.85
-
-            },
+            "factor_weights":
+                factor_weights,
 
             "pcos_risk":
-                pcos_risk,
+                pcos_status,
 
             "avg_cycle_length":
                 cycle_length,
@@ -558,10 +917,13 @@ def predict(user_id):
                 period_length,
 
             "cycle_length_history": [
+
                 cycle_length
+
             ]
 
         })
+
 
     except Exception as e:
 
@@ -589,7 +951,9 @@ def predict(user_id):
     "/log/<user_id>",
     methods=["POST"]
 )
-def log_symptoms(user_id):
+def log_symptoms(
+    user_id
+):
 
     try:
 
@@ -643,9 +1007,12 @@ def chat():
         if not data:
 
             return jsonify({
+
                 "error":
                     "Request body is required"
+
             }), 400
+
 
         user_message = str(
             data.get(
@@ -654,36 +1021,47 @@ def chat():
             )
         ).strip()
 
+
         if not user_message:
 
             return jsonify({
+
                 "error":
                     "Message is required"
+
             }), 400
+
 
         if client is None:
 
             return jsonify({
+
                 "error":
                     "OpenRouter API key is not configured"
+
             }), 500
+
 
         history = data.get(
             "history",
             []
         )
 
+
         messages = [
 
             {
+
                 "role":
                     "system",
 
                 "content":
                     SYSTEM_PROMPT
+
             }
 
         ]
+
 
         if isinstance(
             history,
@@ -696,6 +1074,7 @@ def chat():
                     message,
                     dict
                 ):
+
                     continue
 
                 role = message.get(
@@ -706,14 +1085,21 @@ def chat():
                     "content"
                 )
 
+
                 if role not in [
+
                     "user",
                     "assistant"
+
                 ]:
+
                     continue
 
+
                 if not content:
+
                     continue
+
 
                 messages.append({
 
@@ -725,6 +1111,7 @@ def chat():
 
                 })
 
+
         messages.append({
 
             "role":
@@ -735,15 +1122,17 @@ def chat():
 
         })
 
+
         print(
             "Asha user message:",
             user_message
         )
 
+
         response = client.chat.completions.create(
 
             model=
-                "openrouter/free",
+                "google/gemma-4-26b-a4b-it:free",
 
             messages=
                 messages,
@@ -756,6 +1145,7 @@ def chat():
 
         )
 
+
         reply = (
             response
             .choices[0]
@@ -763,24 +1153,29 @@ def chat():
             .content
         )
 
-        if not reply:
 
-            reply = (
-                "Sorry, I couldn't generate a response "
-                "right now. Please try again."
-            )
+        # ====================================================
+        # CLEAN ANY REASONING LEAK
+        # ====================================================
+
+        reply = clean_ai_response(
+            reply
+        )
+
 
         print(
             "Asha AI reply:",
             reply
         )
 
+
         return jsonify({
 
             "reply":
-                str(reply).strip()
+                reply
 
         })
+
 
     except Exception as e:
 
@@ -807,7 +1202,9 @@ def chat():
 @app.route(
     "/notifications/<user_id>"
 )
-def notifications(user_id):
+def notifications(
+    user_id
+):
 
     return jsonify({
 
@@ -862,7 +1259,6 @@ def notifications(user_id):
     })
 
 
-
 # ============================================================
 # FIND HEALTHCARE
 # ============================================================
@@ -874,150 +1270,340 @@ KURLA_MAX_LNG = 72.910
 
 
 KURLA_FALLBACK = [
+
     {
-        "name": "Aryan Hospital & Medical Centre",
-        "type": "hospital",
-        "address": "D-28/29, Nehru Nagar, Station Road, Kurla East, Mumbai, Maharashtra 400024",
-        "phone": "02225275999",
-        "website": None,
-        "opening_hours": "Open 24 hours",
-        "lat": 19.0648,
-        "lng": 72.8848,
+
+        "name":
+            "Aryan Hospital & Medical Centre",
+
+        "type":
+            "hospital",
+
+        "address":
+            "D-28/29, Nehru Nagar, Station Road, Kurla East, Mumbai, Maharashtra 400024",
+
+        "phone":
+            "02225275999",
+
+        "website":
+            None,
+
+        "opening_hours":
+            "Open 24 hours",
+
+        "lat":
+            19.0648,
+
+        "lng":
+            72.8848
+
     },
 
     {
-        "name": "Madhavbaug Clinic - Kurla East",
-        "type": "clinic",
-        "address": "Bunglow No. 68-C, Kamgar Nagar, Near Tilak Nagar Railway Station, Kurla East, Mumbai 400024",
-        "phone": "9321123863",
-        "website": "https://madhavbaug.org/clinic/kurla-east-mumbai",
-        "opening_hours": "10:00 AM - 7:00 PM; Thursday closed",
-        "lat": 19.0620504,
-        "lng": 72.8876248,
+
+        "name":
+            "Madhavbaug Clinic - Kurla East",
+
+        "type":
+            "clinic",
+
+        "address":
+            "Bunglow No. 68-C, Kamgar Nagar, Near Tilak Nagar Railway Station, Kurla East, Mumbai 400024",
+
+        "phone":
+            "9321123863",
+
+        "website":
+            "https://madhavbaug.org/clinic/kurla-east-mumbai",
+
+        "opening_hours":
+            "10:00 AM - 7:00 PM; Thursday closed",
+
+        "lat":
+            19.0620504,
+
+        "lng":
+            72.8876248
+
     },
 
     {
-        "name": "Nehru Nagar Police Dawakhana",
-        "type": "hospital",
-        "address": "Ambedkar Garden, Bhiva Bapu Magre Marg, Nehru Nagar, Kurla East, Mumbai",
-        "phone": None,
-        "website": None,
-        "opening_hours": None,
-        "lat": 19.0644615,
-        "lng": 72.8834147,
+
+        "name":
+            "Nehru Nagar Police Dawakhana",
+
+        "type":
+            "hospital",
+
+        "address":
+            "Ambedkar Garden, Bhiva Bapu Magre Marg, Nehru Nagar, Kurla East, Mumbai",
+
+        "phone":
+            None,
+
+        "website":
+            None,
+
+        "opening_hours":
+            None,
+
+        "lat":
+            19.0644615,
+
+        "lng":
+            72.8834147
+
     },
 
     {
-        "name": "Maauli Medical",
-        "type": "clinic",
-        "address": "8C/Sharad, 16, Kamgaar Nagar, Kurla East, Mumbai",
-        "phone": None,
-        "website": None,
-        "opening_hours": None,
-        "lat": 19.063883,
-        "lng": 72.8888818,
-    },
+
+        "name":
+            "Maauli Medical",
+
+        "type":
+            "clinic",
+
+        "address":
+            "8C/Sharad, 16, Kamgaar Nagar, Kurla East, Mumbai",
+
+        "phone":
+            None,
+
+        "website":
+            None,
+
+        "opening_hours":
+            None,
+
+        "lat":
+            19.063883,
+
+        "lng":
+            72.8888818
+
+    }
+
 ]
 
 
-def is_kurla_area(latitude, longitude):
+def is_kurla_area(
+    latitude,
+    longitude
+):
+
     return (
-        KURLA_MIN_LAT <= latitude <= KURLA_MAX_LAT
+
+        KURLA_MIN_LAT
+        <=
+        latitude
+        <=
+        KURLA_MAX_LAT
+
         and
-        KURLA_MIN_LNG <= longitude <= KURLA_MAX_LNG
+
+        KURLA_MIN_LNG
+        <=
+        longitude
+        <=
+        KURLA_MAX_LNG
+
     )
 
 
-def get_kurla_fallback():
-    """
-    Return all Kurla healthcare facilities.
+def get_kurla_fallback(
+    selected_type
+):
 
-    The Flutter screen does not have category buttons,
-    so the app receives hospitals and clinics together.
-    """
+    fallback = []
 
-    return [
-        dict(place)
-        for place in KURLA_FALLBACK
-    ]
+    for place in KURLA_FALLBACK:
+
+        if selected_type == "hospital":
+
+            if place["type"] == "hospital":
+
+                fallback.append(
+                    dict(place)
+                )
+
+        elif selected_type == "clinic":
+
+            if place["type"] == "clinic":
+
+                fallback.append(
+                    dict(place)
+                )
+
+        else:
+
+            if place["type"] in [
+
+                "hospital",
+                "clinic"
+
+            ]:
+
+                doctor_place = dict(
+                    place
+                )
+
+                doctor_place["type"] = (
+                    "doctor"
+                )
+
+                fallback.append(
+                    doctor_place
+                )
+
+    return fallback
 
 
-@app.route("/doctors")
+@app.route(
+    "/doctors"
+)
 def doctors():
 
-    # --------------------------------------------------------
-    # READ LOCATION
-    # --------------------------------------------------------
+    lat = request.args.get(
+        "lat"
+    )
 
-    lat = request.args.get("lat")
-    lng = request.args.get("lng")
+    lng = request.args.get(
+        "lng"
+    )
+
+    selected_type = (
+
+        request.args.get(
+            "type",
+            "doctor"
+        )
+        .lower()
+        .strip()
+
+    )
+
+
+    if selected_type not in [
+
+        "doctor",
+        "clinic",
+        "hospital"
+
+    ]:
+
+        selected_type = "doctor"
+
 
     if not lat or not lng:
+
         return jsonify({
-            "error": "Latitude and longitude are required.",
-            "results": []
+
+            "error":
+                "Latitude and longitude are required.",
+
+            "results":
+                []
+
         }), 400
+
 
     try:
-        latitude = float(lat)
-        longitude = float(lng)
 
-    except (TypeError, ValueError):
+        latitude = float(
+            lat
+        )
+
+        longitude = float(
+            lng
+        )
+
+    except ValueError:
+
         return jsonify({
-            "error": "Invalid latitude or longitude.",
-            "results": []
+
+            "error":
+                "Invalid latitude or longitude.",
+
+            "results":
+                []
+
         }), 400
 
-    # --------------------------------------------------------
-    # SEARCH RADIUS
-    # --------------------------------------------------------
 
     SEARCH_RADIUS = 10000
 
-    # --------------------------------------------------------
-    # ONE GENERAL HEALTHCARE QUERY
-    #
-    # We intentionally search all healthcare facilities
-    # because the Flutter UI does NOT have Doctor / Clinic /
-    # Hospital selection buttons.
-    # --------------------------------------------------------
 
-    query = f"""
-[out:json][timeout:25];
+    if selected_type == "hospital":
+
+        query = f"""
+[out:json][timeout:45];
 (
-  nwr["amenity"="doctors"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["healthcare"="doctor"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["amenity"="clinic"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["healthcare"="clinic"](around:{SEARCH_RADIUS},{latitude},{longitude});
   nwr["amenity"="hospital"](around:{SEARCH_RADIUS},{latitude},{longitude});
   nwr["healthcare"="hospital"](around:{SEARCH_RADIUS},{latitude},{longitude});
-  nwr["healthcare"="centre"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["healthcare"="centre"]["healthcare:speciality"](around:{SEARCH_RADIUS},{latitude},{longitude});
 );
 out center;
 """
 
-    # --------------------------------------------------------
-    # OVERPASS SERVERS
-    # --------------------------------------------------------
+
+    elif selected_type == "clinic":
+
+        query = f"""
+[out:json][timeout:45];
+(
+  nwr["amenity"="clinic"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["healthcare"="clinic"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["healthcare"="centre"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["amenity"="doctors"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["healthcare"="doctor"](around:{SEARCH_RADIUS},{latitude},{longitude});
+);
+out center;
+"""
+
+
+    else:
+
+        query = f"""
+[out:json][timeout:45];
+(
+  nwr["amenity"="doctors"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["healthcare"="doctor"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["healthcare"="doctors"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["healthcare"="centre"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["amenity"="clinic"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["healthcare"="clinic"](around:{SEARCH_RADIUS},{latitude},{longitude});
+  nwr["amenity"="hospital"](around:{SEARCH_RADIUS},{latitude},{longitude});
+);
+out center;
+"""
+
 
     overpass_servers = [
+
         "https://overpass.private.coffee/api/interpreter",
+
         "https://overpass-api.de/api/interpreter",
-        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+
     ]
 
+
     headers = {
+
         "User-Agent":
             "Asha-Womens-Health-App/1.0",
+
         "Accept":
-            "application/json",
+            "application/json"
+
     }
+
 
     data = None
 
-    # --------------------------------------------------------
-    # TRY LIVE SEARCH
-    # --------------------------------------------------------
+    last_error = None
+
 
     for server in overpass_servers:
 
@@ -1029,13 +1615,22 @@ out center;
             )
 
             response = requests.post(
+
                 server,
+
                 data={
-                    "data": query
+                    "data":
+                        query
                 },
-                headers=headers,
-                timeout=30,
+
+                headers=
+                    headers,
+
+                timeout=
+                    50
+
             )
+
 
             print(
                 "Overpass response:",
@@ -1043,46 +1638,44 @@ out center;
                 server
             )
 
-            if response.status_code != 200:
-                continue
 
-            try:
-                parsed = response.json()
-            except ValueError:
-                continue
+            if response.status_code == 200:
 
-            if isinstance(parsed, dict):
-                data = parsed
-                break
+                try:
 
-        except requests.exceptions.Timeout:
+                    parsed = response.json()
 
-            print(
-                "Overpass timeout:",
-                server
-            )
+                    if isinstance(
+                        parsed,
+                        dict
+                    ):
+
+                        data = parsed
+
+                        break
+
+                except ValueError as e:
+
+                    last_error = str(
+                        e
+                    )
+
+            else:
+
+                last_error = (
+                    f"HTTP {response.status_code}"
+                )
+
 
         except requests.exceptions.RequestException as e:
 
-            print(
-                "Overpass request failed:",
-                server,
+            last_error = str(
                 e
             )
 
-        except Exception as e:
-
-            print(
-                "Unexpected Overpass error:",
-                server,
-                e
-            )
-
-    # --------------------------------------------------------
-    # PARSE RESULTS
-    # --------------------------------------------------------
 
     results = []
+
 
     if data is not None:
 
@@ -1091,6 +1684,7 @@ out center;
             []
         )
 
+
         for element in elements:
 
             tags = element.get(
@@ -1098,14 +1692,13 @@ out center;
                 {}
             )
 
-            # ------------------------------------------------
-            # GET COORDINATES
-            # ------------------------------------------------
 
             if (
+
                 "lat" in element
                 and
                 "lon" in element
+
             ):
 
                 place_lat = element.get(
@@ -1115,6 +1708,7 @@ out center;
                 place_lng = element.get(
                     "lon"
                 )
+
 
             elif "center" in element:
 
@@ -1131,15 +1725,22 @@ out center;
                     "lon"
                 )
 
+
             else:
+
                 continue
 
+
             if (
+
                 place_lat is None
                 or
                 place_lng is None
+
             ):
+
                 continue
+
 
             try:
 
@@ -1155,123 +1756,135 @@ out center;
                 TypeError,
                 ValueError
             ):
+
                 continue
 
-            # ------------------------------------------------
-            # NAME
-            # ------------------------------------------------
 
             name = (
-                tags.get("name")
-                or
-                tags.get("name:en")
-                or
-                tags.get("official_name")
-                or
-                tags.get("operator")
-                or
-                tags.get("brand")
-                or
-                "Healthcare provider"
+
+                tags.get(
+                    "name"
+                )
+
+                or tags.get(
+                    "name:en"
+                )
+
+                or tags.get(
+                    "official_name"
+                )
+
+                or tags.get(
+                    "operator"
+                )
+
+                or tags.get(
+                    "brand"
+                )
+
+                or "Healthcare provider"
+
             )
 
-            # ------------------------------------------------
-            # TYPE
-            # ------------------------------------------------
-
-            if (
-                tags.get("amenity") == "hospital"
-                or
-                tags.get("healthcare") == "hospital"
-            ):
-
-                facility_type = "hospital"
-
-            elif (
-                tags.get("amenity") == "clinic"
-                or
-                tags.get("healthcare") == "clinic"
-            ):
-
-                facility_type = "clinic"
-
-            elif (
-                tags.get("amenity") == "doctors"
-                or
-                tags.get("healthcare") == "doctor"
-            ):
-
-                facility_type = "doctor"
-
-            else:
-
-                facility_type = "healthcare"
-
-            # ------------------------------------------------
-            # ADDRESS
-            # ------------------------------------------------
 
             address_parts = []
 
+
             for key in [
+
                 "addr:housenumber",
                 "addr:street",
                 "addr:suburb",
                 "addr:city",
-                "addr:postcode",
+                "addr:postcode"
+
             ]:
 
-                value = tags.get(key)
+                value = tags.get(
+                    key
+                )
 
                 if value:
+
                     address_parts.append(
                         str(value).strip()
                     )
+
 
             address = ", ".join(
                 address_parts
             )
 
+
             if not address:
 
                 address = (
-                    tags.get("addr:full")
+
+                    tags.get(
+                        "addr:full"
+                    )
+
                     or
-                    tags.get("description")
+
+                    tags.get(
+                        "description"
+                    )
+
                     or
+
                     ""
+
                 )
 
-            # ------------------------------------------------
-            # PHONE
-            # ------------------------------------------------
 
             phone = (
-                tags.get("contact:phone")
+
+                tags.get(
+                    "contact:phone"
+                )
+
                 or
-                tags.get("phone")
+
+                tags.get(
+                    "phone"
+                )
+
                 or
-                tags.get("telephone")
+
+                tags.get(
+                    "telephone"
+                )
+
             )
+
 
             if phone:
-                phone = str(phone).strip()
 
-            # ------------------------------------------------
-            # WEBSITE
-            #
-            # We still collect it from OSM for data
-            # compatibility, but Flutter does NOT display
-            # a website URL.
-            # ------------------------------------------------
+                phone = str(
+                    phone
+                ).strip()
+
 
             website = (
-                tags.get("contact:website")
+
+                tags.get(
+                    "contact:website"
+                )
+
                 or
-                tags.get("website")
+
+                tags.get(
+                    "website"
+                )
+
                 or
-                tags.get("url")
+
+                tags.get(
+                    "url"
+                )
+
             )
+
 
             if website:
 
@@ -1279,10 +1892,19 @@ out center;
                     website
                 ).strip()
 
+
                 if not (
-                    website.startswith("http://")
+
+                    website.startswith(
+                        "http://"
+                    )
+
                     or
-                    website.startswith("https://")
+
+                    website.startswith(
+                        "https://"
+                    )
+
                 ):
 
                     website = (
@@ -1291,22 +1913,18 @@ out center;
                         website
                     )
 
-            # ------------------------------------------------
-            # OPENING HOURS
-            # ------------------------------------------------
 
             opening_hours = tags.get(
                 "opening_hours"
             )
 
+
             if opening_hours:
+
                 opening_hours = str(
                     opening_hours
                 ).strip()
 
-            # ------------------------------------------------
-            # ADD RESULT
-            # ------------------------------------------------
 
             results.append({
 
@@ -1314,7 +1932,7 @@ out center;
                     str(name).strip(),
 
                 "type":
-                    facility_type,
+                    selected_type,
 
                 "address":
                     str(address).strip(),
@@ -1332,42 +1950,54 @@ out center;
                     place_lat,
 
                 "lng":
-                    place_lng,
+                    place_lng
+
             })
 
-    # --------------------------------------------------------
-    # REMOVE DUPLICATES
-    # --------------------------------------------------------
 
     unique_results = []
 
     seen = set()
 
+
     for result in results:
 
         key = (
+
             result["name"].lower().strip(),
-            round(result["lat"], 5),
-            round(result["lng"], 5),
+
+            round(
+                result["lat"],
+                5
+            ),
+
+            round(
+                result["lng"],
+                5
+            )
+
         )
 
+
         if key in seen:
+
             continue
 
-        seen.add(key)
+
+        seen.add(
+            key
+        )
 
         unique_results.append(
             result
         )
 
-    # Maximum 50 results
+
     unique_results = unique_results[:50]
 
-    # --------------------------------------------------------
-    # FALLBACK
-    # --------------------------------------------------------
 
     source = "OpenStreetMap"
+
 
     if not unique_results:
 
@@ -1377,7 +2007,9 @@ out center;
         ):
 
             unique_results = (
-                get_kurla_fallback()
+                get_kurla_fallback(
+                    selected_type
+                )
             )
 
             source = (
@@ -1392,24 +2024,21 @@ out center;
         else:
 
             print(
-                "No live healthcare results "
-                "for this location."
+                "No live results and location "
+                "is outside the ASHA Kurla demo area."
             )
 
-    # --------------------------------------------------------
-    # RETURN SUCCESS
-    # --------------------------------------------------------
 
     print(
-        f"Returning "
-        f"{len(unique_results)} "
-        f"healthcare results."
+        f"Returning {len(unique_results)} "
+        f"{selected_type} results."
     )
+
 
     return jsonify({
 
         "type":
-            "healthcare",
+            selected_type,
 
         "radius_km":
             10,
@@ -1421,10 +2050,9 @@ out center;
             len(results),
 
         "results":
-            unique_results,
+            unique_results
 
-    }), 200
-
+    })
 
 
 # ============================================================
@@ -1440,6 +2068,7 @@ def geocode():
         "address"
     )
 
+
     if not address:
 
         return jsonify({
@@ -1448,6 +2077,7 @@ def geocode():
                 "Address is required"
 
         }), 400
+
 
     try:
 
@@ -1483,6 +2113,7 @@ def geocode():
 
         )
 
+
         if response.status_code != 200:
 
             return jsonify({
@@ -1492,7 +2123,9 @@ def geocode():
 
             }), 502
 
+
         data = response.json()
+
 
         if not data:
 
@@ -1502,6 +2135,7 @@ def geocode():
                     "Location not found"
 
             }), 404
+
 
         return jsonify({
 
@@ -1520,12 +2154,14 @@ def geocode():
 
         })
 
+
     except Exception as e:
 
         print(
             "Geocoding error:",
             e
         )
+
 
         return jsonify({
 

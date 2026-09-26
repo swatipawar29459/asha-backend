@@ -10,7 +10,6 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final AuthService _auth = AuthService();
 
   final name = TextEditingController();
   final email = TextEditingController();
@@ -68,7 +67,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      await _auth.register(
+      await AuthService.register(
         userEmail,
         userPassword,
         userName,

@@ -10,7 +10,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final AuthService _auth = AuthService();
 
   final email = TextEditingController();
   final password = TextEditingController();
@@ -33,7 +32,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await _auth.login(
+      await AuthService.login(
         email.text.trim(),
         password.text.trim(),
       );

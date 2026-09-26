@@ -13,7 +13,6 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final auth = AuthService();
 
     return Scaffold(
       appBar: AppBar(
@@ -37,7 +36,7 @@ class ProfileScreen extends StatelessWidget {
                   const SizedBox(height: 8),
 
                   Text(
-                    auth.currentUser?.email ?? 'Vittika',
+                    AuthService.currentUser?.email ?? 'Vittika',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ],
@@ -222,7 +221,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 onPressed: () async {
                   try {
-                    await auth.logout();
+                    await AuthService.logout();
 
                     if (!context.mounted) return;
 

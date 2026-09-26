@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -11,34 +12,28 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
-  // ============================================================
-  // NOTIFICATION IDS
-  // ============================================================
-
   static const int cycleNotificationId = 1001;
 
-  // ============================================================
-  // INITIALIZE NOTIFICATIONS
-  // ============================================================
+  static String? get _uid =>
+      FirebaseAuth.instance.currentUser?.uid;
+
+  static String _historyKey(String uid) =>
+      'asha_user_${uid}_notification_history';
+
+  static String _createdKey(String uid) =>
+      'asha_user_${uid}_cycle_notification_created';
 
   static Future<void> init() async {
-    // Initialize timezone database
     tzdata.initializeTimeZones();
 
-    // Use India Standard Time.
-    // IMPORTANT:
-    // Do not use "IST" or "India Standard Time".
-    // The timezone package uses the IANA name "Asia/Kolkata".
     tz.setLocalLocation(
       tz.getLocation('Asia/Kolkata'),
     );
 
-    // Android initialization
-    const AndroidInitializationSettings androidSettings =
+    const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    const InitializationSettings settings =
-        InitializationSettings(
+    const settings = InitializationSettings(
       android: androidSettings,
     );
 
@@ -48,42 +43,85 @@ class NotificationService {
           _onNotificationTapped,
     );
 
-    // Android 13+ notification permission
-    final androidPlugin =
+    final android =
         _plugin.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
 
-    await androidPlugin?.requestNotificationsPermission();
+    await android?.requestNotificationsPermission();
   }
-
-  // ============================================================
-  // NOTIFICATION TAPPED
-  // ============================================================
 
   static Future<void> _onNotificationTapped(
     NotificationResponse response,
   ) async {
     final payload = response.payload;
 
-    if (payload == 'cycle_notification') {
-      await markAllCycleNotificationsAsRead();
+    if (payload == null || payload.isEmpty) return;
+
+    final parts = payload.split('|');
+
+    if (parts.isEmpty ||
+        parts.first != 'cycle_notification') {
+      return;
     }
+
+    if (parts.length < 2) return;
+
+    final notificationUid = parts[1];
+    final currentUid = _uid;
+
+    // Never let a notification belonging to another
+    // Firebase account change the current account.
+    if (currentUid == null ||
+        notificationUid != currentUid) {
+      return;
+    }
+
+    await markAllNotificationsAsRead();
   }
 
-  // ============================================================
-  // SCHEDULE DAILY REMINDER
-  // ============================================================
-
-  static Future<void> scheduleDailyReminder({
-    required int id,
-    required String title,
-    required String body,
-    required int hour,
-    required int minute,
+  static Future<void> scheduleCycleNotification({
+    int hour = 9,
+    int minute = 0,
   }) async {
+    final uid = _uid;
+
+    if (uid == null) return;
+    if (HealthProfileStore.lastPeriodDate == null) return;
+
+    final cycleDay =
+        HealthProfileStore.currentCycleDay;
+
+    final lastPeriod =
+        HealthProfileStore.lastPeriodDate!;
+
+    final alreadyCreated =
+        await _wasCycleNotificationCreatedToday(
+      uid,
+      cycleDay,
+      lastPeriod,
+    );
+
+    if (alreadyCreated) return;
+
+    final message =
+        _getCycleMessage(cycleDay);
+
+    await _saveNotification(
+      uid: uid,
+      title: message.title,
+      body: message.body,
+      cycleDay: cycleDay,
+      lastPeriodDate: lastPeriod,
+    );
+
+    await _plugin.cancel(
+      cycleNotificationId,
+    );
+
     final now = tz.TZDateTime.now(tz.local);
 
-    var scheduled = tz.TZDateTime(
+    tz.TZDateTime scheduled =
+        tz.TZDateTime(
       tz.local,
       now.year,
       now.month,
@@ -92,42 +130,373 @@ class NotificationService {
       minute,
     );
 
-    // If today's time has already passed,
-    // schedule it for tomorrow.
     if (scheduled.isBefore(now)) {
-      scheduled = scheduled.add(
-        const Duration(days: 1),
+      scheduled = now.add(
+        const Duration(seconds: 5),
       );
     }
 
     await _plugin.zonedSchedule(
-      id,
-      title,
-      body,
-      scheduled,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'asha_reminders',
-          'Asha Reminders',
-          channelDescription:
-              'Daily wellness reminders from Asha',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-      ),
-      androidScheduleMode:
-          AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents:
-          DateTimeComponents.time,
+  cycleNotificationId,
+  message.title,
+  message.body,
+  scheduled,
+  const NotificationDetails(
+    android: AndroidNotificationDetails(
+      'asha_cycle',
+      'Asha Cycle Notifications',
+      channelDescription:
+          'Daily menstrual cycle updates from Asha',
+      importance: Importance.high,
+      priority: Priority.high,
+    ),
+  ),
+  androidScheduleMode:
+      AndroidScheduleMode.exactAllowWhileIdle,
+  uiLocalNotificationDateInterpretation:
+      UILocalNotificationDateInterpretation.absoluteTime,
+  payload: 'cycle_notification|$uid',
+);
+  }
+
+  static _CycleMessage _getCycleMessage(
+    int cycleDay,
+  ) {
+    final cycleLength =
+        HealthProfileStore.cycleLength;
+
+    final periodLength =
+        HealthProfileStore.periodLength ?? 5;
+
+    if (cycleDay > cycleLength) {
+      return _CycleMessage(
+        'Asha 🌸 • Period May Be Due',
+        'Your period may be due around this time. '
+            'You are around Cycle Day $cycleDay.',
+      );
+    }
+
+    if (cycleDay <= periodLength) {
+      return _CycleMessage(
+        'Asha 🌸 • Menstrual Phase',
+        'You are around Cycle Day $cycleDay. '
+            'Take care of yourself and rest if needed.',
+      );
+    }
+
+    final ovulationDay =
+        cycleLength - 14;
+
+    final fertileStart =
+        ovulationDay - 5;
+
+    if (cycleDay >= fertileStart &&
+        cycleDay < ovulationDay) {
+      return _CycleMessage(
+        'Asha 🌸 • Fertile Window',
+        'You are around Cycle Day $cycleDay, '
+            'within your estimated fertile window.',
+      );
+    }
+
+    if (cycleDay == ovulationDay) {
+      return _CycleMessage(
+        'Asha 🌸 • Estimated Ovulation',
+        'You are around your estimated ovulation day.',
+      );
+    }
+
+    if (cycleDay == ovulationDay + 1) {
+      return _CycleMessage(
+        'Asha 🌸 • Luteal Phase',
+        'Your cycle is moving into the luteal phase.',
+      );
+    }
+
+    return _CycleMessage(
+      'Asha 🌸 • Cycle Update',
+      'You are around Cycle Day $cycleDay.',
     );
   }
 
-  // ============================================================
-  // SCHEDULE REMINDER
-  // Used by reminders_screen.dart
-  // ============================================================
+  static Future<bool> _wasCycleNotificationCreatedToday(
+    String uid,
+    int cycleDay,
+    DateTime lastPeriodDate,
+  ) async {
+    final prefs =
+        await SharedPreferences.getInstance();
+
+    final raw =
+        prefs.getString(_createdKey(uid));
+
+    if (raw == null) return false;
+
+    try {
+      final data =
+          jsonDecode(raw) as Map<String, dynamic>;
+
+      final date =
+          DateTime.tryParse(
+            data['date']?.toString() ?? '',
+          );
+
+      final savedCycleDay =
+          data['cycleDay'] as int?;
+
+      final savedLastPeriod =
+          DateTime.tryParse(
+            data['lastPeriodDate']?.toString() ?? '',
+          );
+
+      if (date == null ||
+          savedCycleDay == null) {
+        return false;
+      }
+
+      final now = DateTime.now();
+
+      final sameDay =
+          date.year == now.year &&
+          date.month == now.month &&
+          date.day == now.day;
+
+      final sameLastPeriod =
+          savedLastPeriod != null &&
+          savedLastPeriod.year ==
+              lastPeriodDate.year &&
+          savedLastPeriod.month ==
+              lastPeriodDate.month &&
+          savedLastPeriod.day ==
+              lastPeriodDate.day;
+
+      return sameDay &&
+          savedCycleDay == cycleDay &&
+          sameLastPeriod;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> _saveNotification({
+    required String uid,
+    required String title,
+    required String body,
+    required int cycleDay,
+    required DateTime lastPeriodDate,
+  }) async {
+    final prefs =
+        await SharedPreferences.getInstance();
+
+    final key = _historyKey(uid);
+
+    final existingRaw =
+        prefs.getString(key);
+
+    List<Map<String, dynamic>> history = [];
+
+    if (existingRaw != null) {
+      try {
+        final decoded =
+            jsonDecode(existingRaw);
+
+        if (decoded is List) {
+          history = decoded
+              .whereType<Map>()
+              .map(
+                (e) => Map<String, dynamic>.from(e),
+              )
+              .toList();
+        }
+      } catch (_) {}
+    }
+
+    history.insert(
+      0,
+      {
+        'uid': uid,
+        'title': title,
+        'body': body,
+        'cycleDay': cycleDay,
+        'date': DateTime.now().toIso8601String(),
+        'read': false,
+      },
+    );
+
+    if (history.length > 30) {
+      history = history.take(30).toList();
+    }
+
+    await prefs.setString(
+      key,
+      jsonEncode(history),
+    );
+
+    await prefs.setString(
+      _createdKey(uid),
+      jsonEncode({
+        'date': DateTime.now().toIso8601String(),
+        'cycleDay': cycleDay,
+        'lastPeriodDate':
+            lastPeriodDate.toIso8601String(),
+      }),
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>>
+      getNotificationHistory() async {
+    final uid = _uid;
+
+    if (uid == null) return [];
+
+    final prefs =
+        await SharedPreferences.getInstance();
+
+    final raw =
+        prefs.getString(_historyKey(uid));
+
+    if (raw == null) return [];
+
+    try {
+      final decoded = jsonDecode(raw);
+
+      if (decoded is! List) return [];
+
+      return decoded
+          .whereType<Map>()
+          .map(
+            (e) => Map<String, dynamic>.from(e),
+          )
+          .where(
+            (item) =>
+                item['uid']?.toString() == uid,
+          )
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<int> getUnreadCount() async {
+    final history =
+        await getNotificationHistory();
+
+    return history.where(
+      (item) => item['read'] != true,
+    ).length;
+  }
+
+  static Future<void> markNotificationAsRead(
+    int index,
+  ) async {
+    final uid = _uid;
+
+    if (uid == null) return;
+
+    final history =
+        await getNotificationHistory();
+
+    if (index < 0 ||
+        index >= history.length) {
+      return;
+    }
+
+    history[index]['read'] = true;
+
+    await _saveNotificationList(
+      uid,
+      history,
+    );
+  }
+
+  static Future<void> markAllNotificationsAsRead() async {
+    final uid = _uid;
+
+    if (uid == null) return;
+
+    final history =
+        await getNotificationHistory();
+
+    for (final item in history) {
+      item['read'] = true;
+    }
+
+    await _saveNotificationList(
+      uid,
+      history,
+    );
+  }
+
+  // Kept for compatibility with your existing code.
+  static Future<void>
+      markAllCycleNotificationsAsRead() async {
+    await markAllNotificationsAsRead();
+  }
+
+  static Future<void> _saveNotificationList(
+    String uid,
+    List<Map<String, dynamic>> history,
+  ) async {
+    final prefs =
+        await SharedPreferences.getInstance();
+
+    await prefs.setString(
+      _historyKey(uid),
+      jsonEncode(history),
+    );
+  }
+
+  static Future<void> scheduleDailyReminder({
+    required int id,
+    required String title,
+    required String body,
+    required int hour,
+    required int minute,
+  }) async {
+    final uid = _uid;
+
+    if (uid == null) return;
+
+    final now = tz.TZDateTime.now(tz.local);
+
+    var scheduled =
+        tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      hour,
+      minute,
+    );
+
+    if (scheduled.isBefore(now)) {
+      scheduled =
+          scheduled.add(const Duration(days: 1));
+    }
+
+    await _plugin.zonedSchedule(
+  id,
+  title,
+  body,
+  scheduled,
+  const NotificationDetails(
+    android: AndroidNotificationDetails(
+      'asha_reminders',
+      'Asha Reminders',
+      channelDescription: 'Asha health reminders',
+      importance: Importance.high,
+      priority: Priority.high,
+    ),
+  ),
+  androidScheduleMode:
+      AndroidScheduleMode.exactAllowWhileIdle,
+  uiLocalNotificationDateInterpretation:
+      UILocalNotificationDateInterpretation.absoluteTime,
+  matchDateTimeComponents:
+      DateTimeComponents.time,
+  payload: 'reminder|$uid',
+);
+  }
 
   static Future<void> scheduleReminder({
     required int id,
@@ -145,505 +514,24 @@ class NotificationService {
     );
   }
 
-  // ============================================================
-  // CYCLE NOTIFICATION
-  // ============================================================
-
-  static Future<void> scheduleCycleNotification({
-    int hour = 9,
-    int minute = 0,
-  }) async {
-    final lastPeriod =
-        HealthProfileStore.lastPeriodDate;
-
-    if (lastPeriod == null) {
-      return;
-    }
-
-    final cycleLength =
-        HealthProfileStore.cycleLength;
-
-    final cycleDay =
-        HealthProfileStore.currentCycleDay;
-
-    if (cycleDay < 1) {
-      return;
-    }
-
-    // ----------------------------------------------------------
-    // Avoid creating the same cycle notification repeatedly.
-    // ----------------------------------------------------------
-
-    final alreadyCreated =
-        await _wasCycleNotificationCreatedToday(
-      cycleDay,
-    );
-
-    if (alreadyCreated) {
-      return;
-    }
-
-    // ----------------------------------------------------------
-    // Determine the appropriate message.
-    // ----------------------------------------------------------
-
-    final cycleMessage =
-        _getCycleMessage(
-      cycleDay: cycleDay,
-      cycleLength: cycleLength,
-    );
-
-    // ----------------------------------------------------------
-    // Save notification in Asha's own notification history.
-    // ----------------------------------------------------------
-
-    await _saveNotification(
-      title: cycleMessage.title,
-      body: cycleMessage.body,
-      cycleDay: cycleDay,
-    );
-
-    // ----------------------------------------------------------
-    // Cancel any previous cycle notification.
-    // We only want the current cycle notification.
-    // ----------------------------------------------------------
-
+  static Future<void> cancelCycleNotification() async {
     await _plugin.cancel(
       cycleNotificationId,
     );
-
-    final now =
-        tz.TZDateTime.now(tz.local);
-
-    var scheduled = tz.TZDateTime(
-      tz.local,
-      now.year,
-      now.month,
-      now.day,
-      hour,
-      minute,
-    );
-
-    // If today's notification time has already passed,
-    // send it shortly after the app is opened.
-    //
-    // This makes testing easier and prevents the user from
-    // waiting until tomorrow just because they opened Asha
-    // after 9:00 AM.
-    if (scheduled.isBefore(now)) {
-      scheduled =
-          now.add(const Duration(seconds: 5));
-    }
-
-    await _plugin.zonedSchedule(
-      cycleNotificationId,
-      cycleMessage.title,
-      cycleMessage.body,
-      scheduled,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'asha_cycle',
-          'Asha Cycle Notifications',
-          channelDescription:
-              'Menstrual cycle information and wellness notifications from Asha',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-      ),
-      androidScheduleMode:
-          AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      payload: 'cycle_notification',
-    );
   }
 
-  // ============================================================
-  // CYCLE MESSAGE LOGIC
-  // ============================================================
-
-  static _CycleMessage _getCycleMessage({
-    required int cycleDay,
-    required int cycleLength,
-  }) {
-    final periodLength =
-        HealthProfileStore.periodLength ?? 5;
-
-    // ----------------------------------------------------------
-    // If cycle is longer than the user's expected cycle length.
-    // ----------------------------------------------------------
-
-    if (cycleDay > cycleLength) {
-      return _CycleMessage(
-        title: 'Asha 🌸 • Period May Be Due',
-        body:
-            'You are around Cycle Day $cycleDay. '
-            'Your predicted period may be due around this time. '
-            'Cycle timing can naturally vary from month to month.',
-      );
-    }
-
-    // ----------------------------------------------------------
-    // Menstrual phase
-    // ----------------------------------------------------------
-
-    if (cycleDay <= periodLength) {
-      return _CycleMessage(
-        title:
-            'Asha 🌸 • Cycle Day $cycleDay',
-        body:
-            'You are in the menstrual phase. '
-            'Bleeding, cramps, tiredness, bloating, or mood changes '
-            'can occur during this phase. Stay hydrated, rest when '
-            'needed, and listen to your body.',
-      );
-    }
-
-    // ----------------------------------------------------------
-    // Estimated ovulation day
-    //
-    // Ovulation is estimated around 14 days before the next
-    // expected period.
-    // ----------------------------------------------------------
-
-    final ovulationDay =
-        cycleLength - 14;
-
-    // Protect against very short/invalid cycle lengths.
-    if (ovulationDay <= periodLength) {
-      return _CycleMessage(
-        title:
-            'Asha 🌱 • Cycle Day $cycleDay',
-        body:
-            'You are in the later part of your cycle. '
-            'Your cycle timing may vary naturally, so use this '
-            'prediction as a general guide rather than an exact measure.',
-      );
-    }
-
-    // ----------------------------------------------------------
-    // Fertile window
-    //
-    // Approximately 5 days before ovulation through ovulation.
-    // ----------------------------------------------------------
-
-    final fertileStart =
-        ovulationDay - 5;
-
-    if (cycleDay >= fertileStart &&
-        cycleDay < ovulationDay) {
-      return _CycleMessage(
-        title:
-            'Asha 💧 • Cycle Day $cycleDay',
-        body:
-            'You are in your predicted fertile window. '
-            'Ovulation is estimated to be approaching. '
-            'Fertile-window timing can vary between cycles, '
-            'so this is only an estimate.',
-      );
-    }
-
-    // ----------------------------------------------------------
-    // Estimated ovulation day
-    // ----------------------------------------------------------
-
-    if (cycleDay == ovulationDay) {
-      return _CycleMessage(
-        title:
-            'Asha 🌼 • Cycle Day $cycleDay',
-        body:
-            'Today is your predicted ovulation day based on '
-            'your current cycle length. Ovulation can happen '
-            'earlier or later than predicted, so this should '
-            'be treated as an estimate.',
-      );
-    }
-
-    // ----------------------------------------------------------
-    // Day immediately after estimated ovulation
-    // ----------------------------------------------------------
-
-    if (cycleDay == ovulationDay + 1) {
-      return _CycleMessage(
-        title:
-            'Asha 🌙 • Cycle Day $cycleDay',
-        body:
-            'You are moving into the luteal phase. '
-            'Hormonal changes occur during this part of the cycle, '
-            'and some people may notice changes in energy, mood, '
-            'appetite, or other PMS-related symptoms.',
-      );
-    }
-
-    // ----------------------------------------------------------
-    // Luteal phase
-    // ----------------------------------------------------------
-
-    return _CycleMessage(
-      title:
-          'Asha 🌙 • Cycle Day $cycleDay',
-      body:
-          'You are in the luteal phase. '
-          'As your next period approaches, some people experience '
-          'bloating, breast tenderness, mood changes, tiredness, '
-          'or appetite changes. Everyone experiences cycles differently.',
-    );
-  }
-
-  // ============================================================
-  // CHECK WHETHER TODAY'S CYCLE NOTIFICATION EXISTS
-  // ============================================================
-
-  static Future<bool>
-      _wasCycleNotificationCreatedToday(
-    int cycleDay,
-  ) async {
-    final prefs =
-        await SharedPreferences.getInstance();
-
-    final saved =
-        prefs.getString(
-      'asha_cycle_notification_created',
-    );
-
-    if (saved == null) {
-      return false;
-    }
-
-    try {
-      final data =
-          jsonDecode(saved);
-
-      final savedDate =
-          data['date'];
-
-      final savedCycleDay =
-          data['cycleDay'];
-
-      final today =
-          DateTime.now();
-
-      final todayString =
-          '${today.year}-'
-          '${today.month.toString().padLeft(2, '0')}-'
-          '${today.day.toString().padLeft(2, '0')}';
-
-      return savedDate == todayString &&
-          savedCycleDay == cycleDay;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // ============================================================
-  // SAVE CYCLE NOTIFICATION
-  // ============================================================
-
-  static Future<void> _saveNotification({
-    required String title,
-    required String body,
-    required int cycleDay,
-  }) async {
-    final prefs =
-        await SharedPreferences.getInstance();
-
-    final notifications =
-        prefs.getStringList(
-              'asha_notification_history',
-            ) ??
-            [];
-
-    final now =
-        DateTime.now();
-
-    final notification = {
-      'title': title,
-      'body': body,
-      'cycleDay': cycleDay,
-      'date': now.toIso8601String(),
-      'read': false,
-    };
-
-    notifications.insert(
-      0,
-      jsonEncode(notification),
-    );
-
-    // Keep the most recent 30 notifications.
-    if (notifications.length > 30) {
-      notifications.removeRange(
-        30,
-        notifications.length,
-      );
-    }
-
-    await prefs.setStringList(
-      'asha_notification_history',
-      notifications,
-    );
-
-    final todayString =
-        '${now.year}-'
-        '${now.month.toString().padLeft(2, '0')}-'
-        '${now.day.toString().padLeft(2, '0')}';
-
-    await prefs.setString(
-      'asha_cycle_notification_created',
-      jsonEncode({
-        'date': todayString,
-        'cycleDay': cycleDay,
-      }),
-    );
-  }
-
-  // ============================================================
-  // GET NOTIFICATION HISTORY
-  // ============================================================
-
-  static Future<List<Map<String, dynamic>>>
-      getNotificationHistory() async {
-    final prefs =
-        await SharedPreferences.getInstance();
-
-    final saved =
-        prefs.getStringList(
-              'asha_notification_history',
-            ) ??
-            [];
-
-    return saved
-        .map<Map<String, dynamic>>(
-          (item) {
-            try {
-              return Map<String, dynamic>.from(
-                jsonDecode(item),
-              );
-            } catch (_) {
-              return <String, dynamic>{};
-            }
-          },
-        )
-        .where(
-          (item) => item.isNotEmpty,
-        )
-        .toList();
-  }
-
-  // ============================================================
-  // GET UNREAD COUNT
-  // ============================================================
-
-  static Future<int> getUnreadCount() async {
-    final notifications =
-        await getNotificationHistory();
-
-    return notifications.where(
-      (notification) =>
-          notification['read'] != true,
-    ).length;
-  }
-
-  // ============================================================
-  // MARK ONE NOTIFICATION AS READ
-  // ============================================================
-
-  static Future<void> markNotificationAsRead(
-    int index,
-  ) async {
-    final notifications =
-        await getNotificationHistory();
-
-    if (index < 0 ||
-        index >= notifications.length) {
-      return;
-    }
-
-    notifications[index]['read'] = true;
-
-    await _saveNotificationList(
-      notifications,
-    );
-  }
-
-  // ============================================================
-  // MARK ALL AS READ
-  // ============================================================
-
-  static Future<void>
-      markAllCycleNotificationsAsRead() async {
-    final notifications =
-        await getNotificationHistory();
-
-    for (final notification
-        in notifications) {
-      notification['read'] = true;
-    }
-
-    await _saveNotificationList(
-      notifications,
-    );
-  }
-
-  // ============================================================
-  // SAVE NOTIFICATION LIST
-  // ============================================================
-
-  static Future<void> _saveNotificationList(
-    List<Map<String, dynamic>> notifications,
-  ) async {
-    final prefs =
-        await SharedPreferences.getInstance();
-
-    await prefs.setStringList(
-      'asha_notification_history',
-      notifications
-          .map(
-            (notification) =>
-                jsonEncode(notification),
-          )
-          .toList(),
-    );
-  }
-
-  // ============================================================
-  // CANCEL ONE REMINDER
-  // ============================================================
-
-  static Future<void> cancelReminder(
-    int id,
-  ) async {
+  static Future<void> cancelReminder(int id) async {
     await _plugin.cancel(id);
   }
-
-  // ============================================================
-  // CANCEL ONE NOTIFICATION
-  // ============================================================
-
-  static Future<void> cancel(
-    int id,
-  ) async {
-    await _plugin.cancel(id);
-  }
-
-  // ============================================================
-  // CANCEL ALL NOTIFICATIONS
-  // ============================================================
 
   static Future<void> cancelAll() async {
     await _plugin.cancelAll();
   }
 }
 
-// ============================================================
-// CYCLE MESSAGE MODEL
-// ============================================================
-
 class _CycleMessage {
   final String title;
   final String body;
 
-  _CycleMessage({
-    required this.title,
-    required this.body,
-  });
+  _CycleMessage(this.title, this.body);
 }

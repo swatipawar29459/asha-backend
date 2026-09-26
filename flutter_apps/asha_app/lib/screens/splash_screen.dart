@@ -15,7 +15,7 @@ void initState() {
 super.initState();
 Timer(const Duration(seconds: 5), () {
 if (!mounted) return;
-final user = AuthService().currentUser;
+final user = AuthService.currentUser;
 Navigator.pushReplacementNamed(context, user != null ? '/home' : '/onboarding');
 });
 }
