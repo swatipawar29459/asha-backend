@@ -743,7 +743,7 @@ def chat():
         response = client.chat.completions.create(
 
             model=
-                "qwen/qwen3.8-27b:free",
+                "openrouter/free",
 
             messages=
                 messages,
