@@ -25,10 +25,13 @@ class HealthProfileStore {
 
   static String _userPrefix(String uid) => 'asha_user_${uid}_';
 
-  static String _key(String prefix, String name) => '$prefix$name';
+  static String _key(String prefix, String name) {
+    return '$prefix$name';
+  }
 
-  static String? get _firebaseUid =>
-      FirebaseAuth.instance.currentUser?.uid;
+  static String? get _firebaseUid {
+    return FirebaseAuth.instance.currentUser?.uid;
+  }
 
   static DateTime get _today {
     final now = DateTime.now();
@@ -64,30 +67,6 @@ class HealthProfileStore {
     return difference + 1;
   }
 
-  static bool get isPeriodDueToday {
-    final next = predictedNextPeriod;
-
-    if (next == null) return false;
-
-    return _sameDate(_today, next);
-  }
-
-  static bool get isPeriodOverdue {
-    final next = predictedNextPeriod;
-
-    if (next == null) return false;
-
-    return _today.isAfter(next);
-  }
-
-  static int get daysUntilNextPeriod {
-    final next = predictedNextPeriod;
-
-    if (next == null) return 0;
-
-    return next.difference(_today).inDays;
-  }
-
   static DateTime? get predictedNextPeriod {
     if (lastPeriodDate == null) {
       return null;
@@ -99,15 +78,50 @@ class HealthProfileStore {
       lastPeriodDate!.day,
     );
 
+    final safeCycleLength =
+        cycleLength > 0 ? cycleLength : 28;
+
     return last.add(
-      Duration(days: cycleLength),
+      Duration(days: safeCycleLength),
     );
+  }
+
+  static int get daysUntilNextPeriod {
+    final next = predictedNextPeriod;
+
+    if (next == null) {
+      return 0;
+    }
+
+    return next.difference(_today).inDays;
+  }
+
+  static bool get isPeriodDueToday {
+    final next = predictedNextPeriod;
+
+    if (next == null) {
+      return false;
+    }
+
+    return _sameDate(_today, next);
+  }
+
+  static bool get isPeriodOverdue {
+    final next = predictedNextPeriod;
+
+    if (next == null) {
+      return false;
+    }
+
+    return _today.isAfter(next);
   }
 
   static DateTime? get ovulationDate {
     final next = predictedNextPeriod;
 
-    if (next == null) return null;
+    if (next == null) {
+      return null;
+    }
 
     return next.subtract(
       const Duration(days: 14),
@@ -152,7 +166,8 @@ class HealthProfileStore {
     }
 
     if (isPeriodOverdue) {
-      final overdue = _today.difference(next).inDays;
+      final overdue =
+          _today.difference(next).inDays;
 
       return 'Overdue by $overdue '
           '${overdue == 1 ? 'day' : 'days'}';
@@ -181,16 +196,38 @@ class HealthProfileStore {
   }
 
   // ============================================================
-  // PROFILE VALIDATION
+  // PREDICTION DATA CHECK
   // ============================================================
 
+  static List<String> get missingPredictionFields {
+    final missing = <String>[];
+
+    if (age == null || age! <= 0) {
+      missing.add('age');
+    }
+
+    if (periodLength == null || periodLength! <= 0) {
+      missing.add('period_length');
+    }
+
+    if (bmi == null || bmi! <= 0) {
+      missing.add('bmi');
+    }
+
+    if (lastPeriodDate == null) {
+      missing.add('last_period_date');
+    }
+
+    return missing;
+  }
+
   static bool get hasRequiredPredictionData {
-    return age != null &&
-        age! > 0 &&
-        periodLength != null &&
-        periodLength! > 0 &&
-        cycleLength > 0 &&
-        lastPeriodDate != null;
+    return missingPredictionFields.isEmpty;
+  }
+
+  static bool get hasCycleData {
+    return lastPeriodDate != null &&
+        cycleLength > 0;
   }
 
   // ============================================================
@@ -222,7 +259,8 @@ class HealthProfileStore {
   // ============================================================
 
   static Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs =
+        await SharedPreferences.getInstance();
 
     resetInMemory();
 
@@ -233,7 +271,6 @@ class HealthProfileStore {
         prefs,
         _pendingPrefix,
       );
-
       return;
     }
 
@@ -247,11 +284,6 @@ class HealthProfileStore {
               ),
             ) ??
             false;
-
-    // ----------------------------------------------------------
-    // If there is no Firebase profile, check for pending
-    // onboarding data and automatically adopt it.
-    // ----------------------------------------------------------
 
     if (!exists) {
       final hasPending =
@@ -277,7 +309,9 @@ class HealthProfileStore {
         await clearPendingProfile();
       } else {
         userName =
-            FirebaseAuth.instance.currentUser?.displayName ?? '';
+            FirebaseAuth.instance.currentUser
+                    ?.displayName ??
+                '';
 
         return;
       }
@@ -290,7 +324,9 @@ class HealthProfileStore {
 
     if (userName.isEmpty) {
       userName =
-          FirebaseAuth.instance.currentUser?.displayName ?? '';
+          FirebaseAuth.instance.currentUser
+                  ?.displayName ??
+              '';
     }
   }
 
@@ -397,9 +433,8 @@ class HealthProfileStore {
 
     if (lastPeriod != null &&
         lastPeriod.isNotEmpty) {
-      lastPeriodDate = DateTime.tryParse(
-        lastPeriod,
-      );
+      lastPeriodDate =
+          DateTime.tryParse(lastPeriod);
     }
 
     final history =
@@ -424,12 +459,14 @@ class HealthProfileStore {
   // ============================================================
 
   static Future<void> save() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs =
+        await SharedPreferences.getInstance();
 
     final uid = _firebaseUid;
 
-    final prefix =
-        uid == null ? _pendingPrefix : _userPrefix(uid);
+    final prefix = uid == null
+        ? _pendingPrefix
+        : _userPrefix(uid);
 
     await _saveToPrefix(
       prefs,
@@ -690,19 +727,32 @@ class HealthProfileStore {
       'firebase_uid': _firebaseUid,
       'user_id': userId,
       'user_name': userName,
+
       'age': age,
+
       'cycle_length': cycleLength,
+
       'period_length': periodLength,
+
       'stress': stress,
       'stress_level': stress,
+
       'bmi': bmi,
-      'exercise_frequency': exerciseFrequency,
+
+      'exercise_frequency':
+          exerciseFrequency,
+
       'sleep_hours': sleepHours,
+
       'diet': diet,
+
       'pcos': pcos,
+
       'symptoms': symptoms.toList(),
+
       'last_period_date':
           lastPeriodDate?.toIso8601String(),
+
       'period_history':
           periodHistory
               .map(

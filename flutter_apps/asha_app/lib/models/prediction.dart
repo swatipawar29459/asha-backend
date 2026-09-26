@@ -1,3 +1,4 @@
+
 class Prediction {
   final int currentDay;
   final String phaseLabel;
@@ -76,7 +77,7 @@ class Prediction {
     }
 
     // ==========================================================
-    // AVERAGE / CURRENT CYCLE LENGTH
+    // AVERAGE CYCLE LENGTH
     // ==========================================================
 
     final avgCycle =
