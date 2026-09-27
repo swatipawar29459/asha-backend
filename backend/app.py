@@ -1,4 +1,3 @@
-
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import joblib
@@ -52,15 +51,6 @@ if OPENROUTER_API_KEY:
         base_url="https://openrouter.ai/api/v1",
         api_key=OPENROUTER_API_KEY,
     )
-
-
-# ============================================================
-# GOOGLE PLACES API
-# ============================================================
-
-GOOGLE_PLACES_API_KEY = os.environ.get(
-    "GOOGLE_PLACES_API_KEY"
-)
 
 
 # ============================================================
@@ -1087,361 +1077,414 @@ def predict(user_id):
 
 # ============================================================
 # FIND DOCTORS ENDPOINT
-# ============================================================
-
-# ============================================================
-# FIND NEARBY DOCTORS / HOSPITALS / CLINICS
-# GOOGLE PLACES API (NEW)
+# OPENSTREETMAP + OVERPASS
+# NO API KEY REQUIRED
 # ============================================================
 
 @app.route('/find-doctors', methods=['POST'])
 def find_doctors():
 
     try:
-        data = request.get_json(silent=True) or {}
 
-        latitude = data.get('latitude')
-        longitude = data.get('longitude')
-        radius = data.get('radius', 5000)
+        data = request.get_json(
+            silent=True
+        ) or {}
 
-        print("==============================================")
-        print("DOCTOR FINDER REQUEST")
-        print(f"Latitude: {latitude}")
-        print(f"Longitude: {longitude}")
-        print(f"Radius: {radius}")
-        print("==============================================")
 
-        # --------------------------------------------------------
-        # VALIDATE LOCATION
-        # --------------------------------------------------------
-
-        if latitude is None or longitude is None:
-            return jsonify({
-                'error': 'Latitude and longitude are required.'
-            }), 400
-
-        try:
-            latitude = float(latitude)
-            longitude = float(longitude)
-            radius = int(radius)
-        except (TypeError, ValueError):
-            return jsonify({
-                'error': 'Invalid latitude, longitude or radius.'
-            }), 400
-
-        if not (-90 <= latitude <= 90):
-            return jsonify({
-                'error': 'Invalid latitude.'
-            }), 400
-
-        if not (-180 <= longitude <= 180):
-            return jsonify({
-                'error': 'Invalid longitude.'
-            }), 400
-
-        # Keep radius within Google's practical range
-        radius = max(100, min(radius, 50000))
-
-        # --------------------------------------------------------
-        # GOOGLE API KEY
-        # --------------------------------------------------------
-
-        google_api_key = os.environ.get(
-            'GOOGLE_PLACES_API_KEY'
+        latitude = float(
+            data.get('latitude')
         )
 
-        if not google_api_key:
-            print(
-                "ERROR: GOOGLE_PLACES_API_KEY is missing."
+        longitude = float(
+            data.get('longitude')
+        )
+
+        radius = int(
+            data.get(
+                'radius',
+                5000
             )
+        )
+
+
+        # Keep radius within a safe range.
+        radius = max(
+            100,
+            min(
+                radius,
+                50000
+            )
+        )
+
+
+        print(
+            "=============================================="
+        )
+
+        print(
+            "OPENSTREETMAP DOCTOR FINDER"
+        )
+
+        print(
+            f"Latitude: {latitude}"
+        )
+
+        print(
+            f"Longitude: {longitude}"
+        )
+
+        print(
+            f"Radius: {radius}"
+        )
+
+        print(
+            "=============================================="
+        )
+
+
+        # ======================================================
+        # OVERPASS API
+        # ======================================================
+
+        overpass_url = (
+            "https://overpass-api.de/api/interpreter"
+        )
+
+
+        query = f"""
+        [out:json][timeout:25];
+
+        (
+          nwr["amenity"="hospital"]
+             (around:{radius},{latitude},{longitude});
+
+          nwr["amenity"="clinic"]
+             (around:{radius},{latitude},{longitude});
+
+          nwr["amenity"="doctors"]
+             (around:{radius},{latitude},{longitude});
+
+          nwr["healthcare"="hospital"]
+             (around:{radius},{latitude},{longitude});
+
+          nwr["healthcare"="clinic"]
+             (around:{radius},{latitude},{longitude});
+
+          nwr["healthcare"="doctor"]
+             (around:{radius},{latitude},{longitude});
+        );
+
+        out center tags;
+        """
+
+
+        # ======================================================
+        # REQUEST OPENSTREETMAP DATA
+        # ======================================================
+
+        response = requests.post(
+
+            overpass_url,
+
+            data=query,
+
+            headers={
+                "User-Agent":
+                    "Asha-Womens-Health-App/1.0"
+            },
+
+            timeout=35
+        )
+
+
+        print(
+            f"Overpass response: "
+            f"{response.status_code}"
+        )
+
+
+        if response.status_code != 200:
 
             return jsonify({
-                'error':
-                    'Google Places API key is not configured '
-                    'on the server.'
+
+                "error":
+                    "OpenStreetMap search failed.",
+
+                "details":
+                    response.text[:1000]
+
             }), 500
 
-        # --------------------------------------------------------
-        # GOOGLE PLACES API (NEW)
-        # --------------------------------------------------------
 
-        url = (
-            'https://places.googleapis.com/v1/places:searchNearby'
-        )
+        osm_data = response.json()
 
-        headers = {
-            'Content-Type': 'application/json',
-            'X-Goog-Api-Key': google_api_key,
-            'X-Goog-FieldMask': (
-                'places.id,'
-                'places.displayName,'
-                'places.location,'
-                'places.formattedAddress,'
-                'places.rating,'
-                'places.currentOpeningHours'
-            ),
-        }
 
-        # Search valid medical facility types.
-        #
-        # We make separate requests so that if one category
-        # fails, the other categories can still work.
+        facilities = []
 
-        search_types = [
-            'doctor',
-            'hospital',
-            'medical_clinic',
-        ]
 
-        all_facilities = []
+        # ======================================================
+        # PROCESS OSM RESULTS
+        # ======================================================
 
-        for search_type in search_types:
+        for element in osm_data.get(
+            "elements",
+            []
+        ):
 
-            print(
-                f"Searching Google Places for: "
-                f"{search_type}"
+            tags = element.get(
+                "tags",
+                {}
             )
 
-            payload = {
-                'includedTypes': [
-                    search_type
-                ],
-                'maxResultCount': 20,
-                'locationRestriction': {
-                    'circle': {
-                        'center': {
-                            'latitude': latitude,
-                            'longitude': longitude,
-                        },
-                        'radius': float(radius),
-                    }
-                },
-            }
 
-            try:
-                google_response = requests.post(
-                    url,
-                    headers=headers,
-                    json=payload,
-                    timeout=20,
-                )
-
-                print(
-                    f"Google response for "
-                    f"{search_type}: "
-                    f"{google_response.status_code}"
-                )
-
-                print(
-                    f"Google body for "
-                    f"{search_type}: "
-                    f"{google_response.text[:2000]}"
-                )
-
-            except requests.RequestException as e:
-
-                print(
-                    f"Google request failed for "
-                    f"{search_type}: {e}"
-                )
-
-                continue
-
-            # ----------------------------------------------------
-            # HANDLE GOOGLE ERROR
-            # ----------------------------------------------------
-
-            if google_response.status_code != 200:
-
-                print(
-                    f"Google Places error for "
-                    f"{search_type}: "
-                    f"{google_response.text}"
-                )
-
-                continue
-
-            try:
-                google_data = google_response.json()
-            except ValueError:
-
-                print(
-                    f"Invalid JSON from Google for "
-                    f"{search_type}"
-                )
-
-                continue
-
-            # ----------------------------------------------------
-            # READ PLACES
-            # ----------------------------------------------------
-
-            places = google_data.get(
-                'places',
-                []
+            name = tags.get(
+                "name"
             )
 
-            print(
-                f"Google returned "
-                f"{len(places)} places for "
-                f"{search_type}"
-            )
 
-            for place in places:
+            # Ignore unnamed places.
+            if not name:
+                continue
 
-                place_id = place.get('id')
 
-                display_name = place.get(
-                    'displayName',
+            # ==================================================
+            # GET COORDINATES
+            # ==================================================
+
+            if element.get(
+                "type"
+            ) == "node":
+
+                facility_lat = element.get(
+                    "lat"
+                )
+
+                facility_lng = element.get(
+                    "lon"
+                )
+
+            else:
+
+                center = element.get(
+                    "center",
                     {}
                 )
 
-                name = display_name.get(
-                    'text',
-                    'Unknown'
+                facility_lat = center.get(
+                    "lat"
                 )
 
-                location = place.get(
-                    'location',
-                    {}
+                facility_lng = center.get(
+                    "lon"
                 )
 
-                place_latitude = location.get(
-                    'latitude'
+
+            if (
+                facility_lat is None
+                or
+                facility_lng is None
+            ):
+
+                continue
+
+
+            # ==================================================
+            # DETERMINE FACILITY TYPE
+            # ==================================================
+
+            if (
+
+                tags.get(
+                    "amenity"
+                ) == "hospital"
+
+                or
+
+                tags.get(
+                    "healthcare"
+                ) == "hospital"
+
+            ):
+
+                facility_type = "hospital"
+
+
+            elif (
+
+                tags.get(
+                    "amenity"
+                ) == "doctors"
+
+                or
+
+                tags.get(
+                    "healthcare"
+                ) == "doctor"
+
+            ):
+
+                facility_type = "doctor"
+
+
+            else:
+
+                facility_type = "clinic"
+
+
+            # ==================================================
+            # BUILD ADDRESS
+            # ==================================================
+
+            address_parts = []
+
+
+            for key in [
+
+                "addr:housenumber",
+
+                "addr:street",
+
+                "addr:suburb",
+
+                "addr:city",
+
+                "addr:postcode"
+
+            ]:
+
+                value = tags.get(
+                    key
                 )
 
-                place_longitude = location.get(
-                    'longitude'
-                )
 
-                if (
-                    not place_id
-                    or place_latitude is None
-                    or place_longitude is None
-                ):
-                    continue
+                if value:
 
-                opening_hours = place.get(
-                    'currentOpeningHours'
-                )
-
-                is_open = None
-
-                if isinstance(
-                    opening_hours,
-                    dict
-                ):
-                    is_open = opening_hours.get(
-                        'openNow'
+                    address_parts.append(
+                        value
                     )
 
-                facility = {
-                    'id': str(place_id),
 
-                    'name': str(name),
-
-                    'latitude': float(
-                        place_latitude
-                    ),
-
-                    'longitude': float(
-                        place_longitude
-                    ),
-
-                    'address': place.get(
-                        'formattedAddress'
-                    ),
-
-                    'type': search_type,
-
-                    'rating': place.get(
-                        'rating'
-                    ),
-
-                    'is_open': is_open,
-                }
-
-                all_facilities.append(
-                    facility
-                )
-
-        # --------------------------------------------------------
-        # REMOVE DUPLICATES
-        # --------------------------------------------------------
-
-        unique_facilities = {}
-
-        for facility in all_facilities:
-
-            facility_id = facility.get('id')
-
-            if facility_id:
-                unique_facilities[
-                    facility_id
-                ] = facility
-
-        facilities = list(
-            unique_facilities.values()
-        )
-
-        # --------------------------------------------------------
-        # SORT BY RATING
-        # --------------------------------------------------------
-
-        facilities.sort(
-            key=lambda x: (
-                x.get('rating') or 0
-            ),
-            reverse=True,
-        )
-
-        facilities = facilities[:30]
-
-        print("==============================================")
-        print(
-            f"TOTAL UNIQUE FACILITIES: "
-            f"{len(facilities)}"
-        )
-
-        for facility in facilities[:10]:
-            print(
-                facility.get('name'),
-                facility.get('latitude'),
-                facility.get('longitude'),
-                facility.get('type'),
+            address = ", ".join(
+                address_parts
             )
 
-        print("==============================================")
+
+            # ==================================================
+            # NORMALIZED FACILITY
+            # ==================================================
+
+            facilities.append({
+
+                "id":
+                    f"osm_"
+                    f"{element.get('type')}_"
+                    f"{element.get('id')}",
+
+                "name":
+                    name,
+
+                "latitude":
+                    float(
+                        facility_lat
+                    ),
+
+                "longitude":
+                    float(
+                        facility_lng
+                    ),
+
+                "address":
+                    address or None,
+
+                "type":
+                    facility_type,
+
+                # OpenStreetMap does not provide
+                # Google-style ratings.
+                "rating":
+                    None,
+
+                # OpenStreetMap does not reliably provide
+                # real-time opening status.
+                "is_open":
+                    None,
+
+            })
+
+
+        # ======================================================
+        # REMOVE DUPLICATES
+        # ======================================================
+
+        unique = {}
+
+
+        for facility in facilities:
+
+            unique[
+                facility["id"]
+            ] = facility
+
+
+        facilities = list(
+            unique.values()
+        )
+
+
+        # ======================================================
+        # LIMIT RESULTS
+        # ======================================================
+
+        facilities = facilities[:50]
+
+
+        print(
+            f"Found "
+            f"{len(facilities)} "
+            f"healthcare facilities"
+        )
+
+
+        # ======================================================
+        # RETURN DOCTOR RESULTS
+        # ======================================================
 
         return jsonify({
-            'success': True,
-            'facilities': facilities,
-            'count': len(facilities),
+
+            "success":
+                True,
+
+            "facilities":
+                facilities,
+
+            "count":
+                len(facilities)
+
         }), 200
+
 
     except Exception as e:
 
         print(
-            "=============================================="
+            f"DOCTOR FINDER ERROR: {e}"
         )
 
-        print(
-            f"DOCTOR FINDER SERVER ERROR: {e}"
-        )
-
-        print(
-            "=============================================="
-        )
 
         return jsonify({
-            'error':
-                'Doctor finder server error.',
-            'details': str(e),
+
+            "error":
+                "Doctor finder server error.",
+
+            "details":
+                str(e)
+
         }), 500
+
 
 # ============================================================
 # GET DOCTOR DETAILS
-# GOOGLE PLACES API (NEW)
+# OPENSTREETMAP
+# NO GOOGLE API KEY
 # ============================================================
 
 @app.route(
@@ -1450,145 +1493,37 @@ def find_doctors():
 )
 def get_doctor_details(place_id):
 
+    """
+    Doctor details are already returned by the
+    /find-doctors endpoint.
+
+    This route is kept so the Flutter app does not
+    receive a 404 if it requests a facility by ID.
+
+    Since OpenStreetMap does not provide Google-style
+    ratings, reviews, phone numbers, or real-time
+    opening status consistently, those fields are
+    returned as null/empty values.
+    """
+
     try:
 
-        google_api_key = os.environ.get(
-            'GOOGLE_PLACES_API_KEY'
-        )
-
-        if not google_api_key:
-
-            return jsonify({
-                'error':
-                    'Google Places API key is not configured.'
-            }), 500
-
-        print("==============================================")
-        print("DOCTOR DETAILS REQUEST")
-        print(f"Place ID: {place_id}")
-        print("==============================================")
-
-        # Google Places API (New) uses:
-        # GET /v1/places/{place_id}
-
-        # The search endpoint returns IDs such as:
-        # places/ChIJxxxxxxxx
-        #
-        # If only the final ID is supplied, add "places/".
-
-        if not place_id.startswith('places/'):
-
-            place_resource = f'places/{place_id}'
-
-        else:
-
-            place_resource = place_id
-
-        url = (
-            'https://places.googleapis.com/v1/'
-            f'{place_resource}'
-        )
-
-        headers = {
-            'X-Goog-Api-Key': google_api_key,
-
-            'X-Goog-FieldMask': (
-                'id,'
-                'displayName,'
-                'formattedAddress,'
-                'nationalPhoneNumber,'
-                'internationalPhoneNumber,'
-                'websiteUri,'
-                'rating,'
-                'currentOpeningHours,'
-                'reviews'
-            ),
-        }
-
-        response = requests.get(
-            url,
-            headers=headers,
-            timeout=20
+        print(
+            "=============================================="
         )
 
         print(
-            f"Google Details Response: "
-            f"{response.status_code}"
+            "OPENSTREETMAP DOCTOR DETAILS REQUEST"
         )
 
         print(
-            f"Google Details Body: "
-            f"{response.text[:3000]}"
+            f"Facility ID: {place_id}"
         )
 
-        if response.status_code != 200:
-
-            return jsonify({
-
-                'error':
-                    'Could not get facility details.',
-
-                'details':
-                    response.text
-
-            }), response.status_code
-
-        place = response.json()
-
-        display_name = place.get(
-            'displayName',
-            {}
+        print(
+            "=============================================="
         )
 
-        opening_hours = place.get(
-            'currentOpeningHours'
-        )
-
-        is_open = None
-
-        if isinstance(
-            opening_hours,
-            dict
-        ):
-
-            is_open = opening_hours.get(
-                'openNow'
-            )
-
-        details = {
-
-            'address':
-                place.get(
-                    'formattedAddress'
-                ),
-
-            'phone':
-                place.get(
-                    'nationalPhoneNumber'
-                    or
-                    'internationalPhoneNumber'
-                ),
-
-            'website':
-                place.get(
-                    'websiteUri'
-                ),
-
-            'opening_hours':
-                opening_hours,
-
-            'rating':
-                place.get(
-                    'rating'
-                ),
-
-            'reviews':
-                place.get(
-                    'reviews',
-                    []
-                )[:5]
-
-        }
 
         return jsonify({
 
@@ -1596,14 +1531,32 @@ def get_doctor_details(place_id):
                 'success',
 
             'name':
-                display_name.get(
-                    'text'
-                ),
+                'Healthcare Facility',
 
-            'details':
-                details
+            'details': {
+
+                'address':
+                    None,
+
+                'phone':
+                    None,
+
+                'website':
+                    None,
+
+                'opening_hours':
+                    None,
+
+                'rating':
+                    None,
+
+                'reviews':
+                    []
+
+            }
 
         }), 200
+
 
     except Exception as e:
 
@@ -1611,10 +1564,11 @@ def get_doctor_details(place_id):
             f'Error getting doctor details: {e}'
         )
 
+
         return jsonify({
 
             'error':
-                'Failed to get doctor details',
+                'Failed to get facility details',
 
             'message':
                 str(e)
@@ -1873,4 +1827,3 @@ if __name__ == '__main__':
         host='0.0.0.0',
         port=10000
     )
-
