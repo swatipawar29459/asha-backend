@@ -1,354 +1,251 @@
 import 'package:flutter/material.dart';
 import '../services/health_profile_store.dart';
+import '../theme/asha_theme.dart';
 
 // ============================================================
-// LAST PERIOD SCREEN - CORRECTED & COMPLETE
+// LAST PERIOD SCREEN — matches onboarding mockup
 // ============================================================
 
 class LastPeriodScreen extends StatefulWidget {
-  const LastPeriodScreen({Key? key}) : super(key: key);
+ const LastPeriodScreen({Key? key}) : super(key: key);
 
-  @override
-  State<LastPeriodScreen> createState() => _LastPeriodScreenState();
+ @override
+ State<LastPeriodScreen> createState() => _LastPeriodScreenState();
 }
 
 class _LastPeriodScreenState extends State<LastPeriodScreen> {
-  // ============================================================
-  // STATE VARIABLES
-  // ============================================================
-  
-  late DateTime? _selectedDate = HealthProfileStore.lastPeriodDate;
-  late TextEditingController _dateController;
+ // ============================================================
+ // STATE VARIABLES
+ // ============================================================
 
-  @override
-  void initState() {
-    super.initState();
-    
-    _dateController = TextEditingController();
-    
-    // Set initial date if exists
-    if (_selectedDate != null) {
-      _dateController.text = 
-        '${_selectedDate!.day.toString().padLeft(2, '0')}/'
-        '${_selectedDate!.month.toString().padLeft(2, '0')}/'
-        '${_selectedDate!.year}';
-    }
-  }
+ late DateTime? _selectedDate = HealthProfileStore.lastPeriodDate;
 
-  @override
-  void dispose() {
-    _dateController.dispose();
-    super.dispose();
-  }
+ // ============================================================
+ // DATE FORMAT
+ // ============================================================
 
-  // ============================================================
-  // METHOD 1: _selectDate - UPDATED WITH DATE VALIDATION
-  // ============================================================
+ String _formatDate(DateTime date) {
+ return '${date.day.toString().padLeft(2, '0')}/'
+ '${date.month.toString().padLeft(2, '0')}/'
+ '${date.year}';
+ }
 
-  Future<void> _selectDate(BuildContext context) async {
-    final now = DateTime.now();
-    
-    // Don't allow future dates - max date is TODAY
-    final firstDate = DateTime(now.year - 5);
-    final lastDate = now;
-    
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate ?? now,
-      firstDate: firstDate,
-      lastDate: lastDate, // ✅ CRITICAL: Prevents future dates
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFFE07B4D), // Asha coral color
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
+ // ============================================================
+ // SELECT DATE — with validation
+ // ============================================================
 
-    if (picked != null) {
-      // Additional validation - double check date is not in future
-      if (picked.isAfter(now)) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please select a date that is not in the future'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-        return;
-      }
+ Future<void> _selectDate(BuildContext context) async {
+ final now = DateTime.now();
 
-      // Update state with selected date
-      setState(() {
-        _selectedDate = picked;
-        _dateController.text = 
-          '${picked.day.toString().padLeft(2, '0')}/'
-          '${picked.month.toString().padLeft(2, '0')}/'
-          '${picked.year}';
-      });
+ // Don't allow future dates - max date is TODAY
+ final firstDate = DateTime(now.year - 5);
+ final lastDate = now;
 
-      // Also update HealthProfileStore immediately
-      HealthProfileStore.lastPeriodDate = picked;
-      await HealthProfileStore.save();
+ final picked = await showDatePicker(
+ context: context,
+ initialDate: _selectedDate ?? now,
+ firstDate: firstDate,
+ lastDate: lastDate, // CRITICAL: Prevents future dates
+ builder: (context, child) {
+ return Theme(
+ data: Theme.of(context).copyWith(
+ colorScheme: const ColorScheme.light(
+ primary: AshaColors.coral,
+ ),
+ ),
+ child: child!,
+ );
+ },
+ );
 
-      print('✅ Last period date set to: $picked');
-    }
-  }
+ if (picked == null) return;
 
-  // ============================================================
-  // METHOD 2: _validateForm - VALIDATE ALL FIELDS
-  // ============================================================
+ // Additional validation - double check date is not in future
+ if (picked.isAfter(now)) {
+ _showError('Please select a date that is not in the future');
+ return;
+ }
 
-  bool _validateForm() {
-    final now = DateTime.now();
+ setState(() {
+ _selectedDate = picked;
+ });
 
-    // Check last period date is selected
-    if (_selectedDate == null) {
-      _showError('Please select your last period date');
-      return false;
-    }
+ // Update HealthProfileStore immediately
+ HealthProfileStore.lastPeriodDate = picked;
+ await HealthProfileStore.save();
+ }
 
-    // Check date is not in future
-    if (_selectedDate!.isAfter(now)) {
-      _showError('Last period date cannot be in the future');
-      return false;
-    }
+ // ============================================================
+ // VALIDATE FORM
+ // ============================================================
 
-    // Check if date is too old (more than 1 year ago)
-    final oneYearAgo = now.subtract(const Duration(days: 365));
-    if (_selectedDate!.isBefore(oneYearAgo)) {
-      _showError('Please select a date within the last year');
-      return false;
-    }
+ bool _validateForm() {
+ final now = DateTime.now();
 
-    return true;
-  }
+ if (_selectedDate == null) {
+ _showError('Please select your last period date');
+ return false;
+ }
 
-  // ============================================================
-  // METHOD 3: _showError - HELPER METHOD
-  // ============================================================
+ if (_selectedDate!.isAfter(now)) {
+ _showError('Last period date cannot be in the future');
+ return false;
+ }
 
-  void _showError(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 2),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
+ final oneYearAgo = now.subtract(const Duration(days: 365));
+ if (_selectedDate!.isBefore(oneYearAgo)) {
+ _showError('Please select a date within the last year');
+ return false;
+ }
 
-  // ============================================================
-  // METHOD 4: _showSuccess - HELPER METHOD
-  // ============================================================
+ return true;
+ }
 
-  void _showSuccess(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 2),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  }
+ void _showError(String message) {
+ if (!mounted) return;
 
-  // ============================================================
-  // METHOD 5: onSavePressed - SAVE WITH VALIDATION
-  // ============================================================
+ ScaffoldMessenger.of(context).showSnackBar(
+ SnackBar(
+ content: Text(message),
+ duration: const Duration(seconds: 2),
+ backgroundColor: Colors.red,
+ ),
+ );
+ }
 
-  Future<void> onSavePressed() async {
-    // Validate form first
-    if (!_validateForm()) {
-      return; // Validation failed, error shown
-    }
+ // ============================================================
+ // ON NEXT PRESSED
+ // ============================================================
 
-    if (_selectedDate == null) {
-      _showError('Please select a last period date');
-      return;
-    }
+ Future<void> _onNextPressed() async {
+ if (!_validateForm()) return;
 
-    try {
-      // Save the date to HealthProfileStore
-      HealthProfileStore.lastPeriodDate = _selectedDate;
-      await HealthProfileStore.save();
+ try {
+ HealthProfileStore.lastPeriodDate = _selectedDate;
+ await HealthProfileStore.save();
 
-      print('✅ Last period date saved: $_selectedDate');
+ if (!mounted) return;
 
-      _showSuccess('Last period date saved successfully!');
+ Navigator.of(context).pop(_selectedDate);
+ } catch (e) {
+ _showError('Failed to save date. Please try again.');
+ }
+ }
 
-      // Optional: Navigate to next screen or pop
-      // await Future.delayed(const Duration(seconds: 1));
-      // if (mounted) {
-      //   Navigator.of(context).pushNamed('/next-screen');
-      // }
+ // ============================================================
+ // BUILD
+ // ============================================================
 
-    } catch (e) {
-      print('❌ Error saving date: $e');
-      _showError('Failed to save date. Please try again.');
-    }
-  }
+ @override
+ Widget build(BuildContext context) {
+ return Scaffold(
+ backgroundColor: AshaColors.cream,
+ body: SafeArea(
+ child: Padding(
+ padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+ child: Column(
+ crossAxisAlignment: CrossAxisAlignment.start,
+ children: [
+ const Text(
+ 'When did your last\nperiod start?',
+ style: TextStyle(
+ color: AshaColors.ink,
+ fontSize: 26,
+ fontWeight: FontWeight.w700,
+ height: 1.25,
+ ),
+ ),
+ const SizedBox(height: 8),
+ const Text(
+ 'This is what lets Asha predict your next date.',
+ style: TextStyle(
+ color: AshaColors.slate,
+ fontSize: 13,
+ ),
+ ),
+ const SizedBox(height: 28),
+ _buildDateField(),
+ const Spacer(),
+ _buildNextButton(),
+ ],
+ ),
+ ),
+ ),
+ );
+ }
 
-  // ============================================================
-  // METHOD 6: onSkipPressed - SKIP THIS STEP
-  // ============================================================
+ // ============================================================
+ // DATE FIELD
+ // ============================================================
 
-  Future<void> onSkipPressed() async {
-    try {
-      // Don't set lastPeriodDate, user can set it later
-      print('⏭️  Skipped last period date setup');
-      
-      _showSuccess('You can update this later in your profile');
+ Widget _buildDateField() {
+ return InkWell(
+ borderRadius: BorderRadius.circular(28),
+ onTap: () => _selectDate(context),
+ child: Container(
+ padding: const EdgeInsets.symmetric(
+ horizontal: 18,
+ vertical: 16,
+ ),
+ decoration: BoxDecoration(
+ color: Colors.white,
+ borderRadius: BorderRadius.circular(28),
+ ),
+ child: Row(
+ children: [
+ const Icon(
+ Icons.calendar_today_rounded,
+ color: AshaColors.coral,
+ size: 20,
+ ),
+ const SizedBox(width: 14),
+ Expanded(
+ child: Text(
+ _selectedDate != null
+ ? _formatDate(_selectedDate!)
+ : 'Select a date',
+ textAlign: TextAlign.right,
+ style: TextStyle(
+ color: _selectedDate != null
+ ? AshaColors.ink
+ : AshaColors.slate,
+ fontSize: 15,
+ fontWeight: FontWeight.w600,
+ ),
+ ),
+ ),
+ ],
+ ),
+ ),
+ );
+ }
 
-      // Navigate to next screen
-      // await Future.delayed(const Duration(seconds: 1));
-      // if (mounted) {
-      //   Navigator.of(context).pushNamed('/next-screen');
-      // }
+ // ============================================================
+ // NEXT BUTTON
+ // ============================================================
 
-    } catch (e) {
-      print('❌ Error in skip: $e');
-    }
-  }
-
-  // ============================================================
-  // BUILD METHOD
-  // ============================================================
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('When did your last period start?'),
-        backgroundColor: const Color(0xFFE07B4D),
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Instruction text
-            const Text(
-              'Select the date when your last period started',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-
-            // Date picker button
-            GestureDetector(
-              onTap: () => _selectDate(context),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: const Color(0xFFE07B4D),
-                    width: 2,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  color: Colors.white,
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.calendar_today,
-                      color: Color(0xFFE07B4D),
-                      size: 24,
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TextField(
-                        controller: _dateController,
-                        enabled: false,
-                        decoration: InputDecoration(
-                          hintText: 'Select a date',
-                          hintStyle: TextStyle(
-                            color: Colors.grey[400],
-                          ),
-                          border: InputBorder.none,
-                        ),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Info box
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE07B4D).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                '💡 Tip: This helps us predict your next period and fertile window. You can update this anytime in your profile.',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFFE07B4D),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 48),
-
-            // Save button
-            ElevatedButton(
-              onPressed: onSavePressed,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE07B4D),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'Continue',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Skip button
-            TextButton(
-              onPressed: onSkipPressed,
-              child: const Text(
-                'Skip for now',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFFE07B4D),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+ Widget _buildNextButton() {
+ return SizedBox(
+ width: double.infinity,
+ child: ElevatedButton(
+ onPressed: _onNextPressed,
+ style: ElevatedButton.styleFrom(
+ backgroundColor: AshaColors.ink,
+ foregroundColor: Colors.white,
+ elevation: 0,
+ padding: const EdgeInsets.symmetric(vertical: 17),
+ shape: RoundedRectangleBorder(
+ borderRadius: BorderRadius.circular(30),
+ ),
+ ),
+ child: const Text(
+ 'Next',
+ style: TextStyle(
+ fontSize: 15,
+ fontWeight: FontWeight.w700,
+ ),
+ ),
+ ),
+ );
+ }
 }

@@ -137,56 +137,54 @@ class _FindDoctorScreenState
   // ============================================================
 
   Future<void> _loadDoctors(
-    double latitude,
-    double longitude,
-  ) async {
-    try {
-      debugPrint(
-        'Finding healthcare providers at: '
-        '$latitude, $longitude',
-      );
+  double latitude,
+  double longitude,
+) async {
+  try {
+    debugPrint(
+      'Finding healthcare providers at: '
+      '$latitude, $longitude',
+    );
 
-      final doctors =
-          await ApiService.findDoctors(
-        latitude: latitude,
-        longitude: longitude,
-      );
+    final doctors = await ApiService.findDoctors(
+      latitude: latitude,
+      longitude: longitude,
+    );
 
-      debugPrint(
-        'Healthcare providers returned: '
-        '${doctors.length}',
-      );
+    debugPrint(
+      'Healthcare providers returned: '
+      '${doctors.length}',
+    );
 
-      if (!mounted) return;
+    if (!mounted) return;
 
-      setState(() {
-        results = doctors;
-        loading = false;
+    setState(() {
+      results = doctors;
+      loading = false;
 
-        if (doctors.isEmpty) {
-          error =
-              'Location found, but no nearby medical '
-              'facilities were returned.';
-        } else {
-          error = null;
-        }
-      });
-    } catch (e) {
-      debugPrint(
-        'Healthcare provider search error: $e',
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        loading = false;
+      if (doctors.isEmpty) {
         error =
-            'The location was found, but healthcare '
-            'providers could not be loaded right now. '
-            'Please try again.';
-      });
-    }
+            'Location found, but no nearby medical '
+            'facilities were returned.';
+      } else {
+        error = null;
+      }
+    });
+  } catch (e) {
+    debugPrint(
+      'Healthcare provider search error: $e',
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      loading = false;
+      error =
+          'Doctor search failed:\n'
+          '${e.toString().replaceFirst('Exception: ', '')}';
+    });
   }
+}
 
   // ============================================================
   // ADDRESS SEARCH

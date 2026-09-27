@@ -12,9 +12,7 @@ import '../models/doctor.dart';
 // ============================================================
 
 class ApiService {
-  static const String baseUrl =
-      'https://asha-backend-u1y6.onrender.com';
-
+  static const String baseUrl = 'https://asha-backend-1.onrender.com';
   // ============================================================
   // PREDICTION
   // ============================================================
@@ -210,99 +208,113 @@ class ApiService {
   // FIND DOCTORS
   // ============================================================
 
-  static Future<List<Doctor>> findDoctors({
-    required double latitude,
-    required double longitude,
-    int radius = 5000,
-  }) async {
-    try {
-      print(
-        '================================',
-      );
-      print('DOCTOR FINDER REQUEST');
-      print('Latitude: $latitude');
-      print('Longitude: $longitude');
-      print('Radius: $radius meters');
+ static Future<List<Doctor>> findDoctors({
+  required double latitude,
+  required double longitude,
+  int radius = 5000,
+}) async {
+  try {
+    print('================================');
+    print('DOCTOR FINDER REQUEST');
+    print('Latitude: $latitude');
+    print('Longitude: $longitude');
+    print('Radius: $radius meters');
 
-      final response = await http
-          .post(
-            Uri.parse(
-              '$baseUrl/find-doctors',
-            ),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode({
-              'latitude': latitude,
-              'longitude': longitude,
-              'radius': radius,
-            }),
-          )
-          .timeout(
-            const Duration(seconds: 30),
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/find-doctors'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode({
+            'latitude': latitude,
+            'longitude': longitude,
+            'radius': radius,
+          }),
+        )
+        .timeout(
+          const Duration(seconds: 40),
+        );
+
+    print(
+      'Doctor Finder Response: ${response.statusCode}',
+    );
+
+    print(
+      'Response body: ${response.body}',
+    );
+
+    print('================================');
+
+    if (response.statusCode != 200) {
+      try {
+        final errorBody = jsonDecode(response.body);
+
+        if (errorBody is Map<String, dynamic>) {
+          throw Exception(
+            errorBody['error'] ??
+                errorBody['message'] ??
+                'Server returned ${response.statusCode}',
           );
-
-      print(
-        'Doctor Finder Response: '
-        '${response.statusCode}',
-      );
-
-      print(
-        'Response body: '
-        '${response.body}',
-      );
-
-      print(
-        '================================',
-      );
-
-      if (response.statusCode != 200) {
+        }
+      } catch (_) {
         throw Exception(
-          'Failed to find doctors: '
-          '${response.body}',
+          'Doctor search failed '
+          '(${response.statusCode}): ${response.body}',
         );
       }
-
-      final decoded =
-          jsonDecode(response.body);
-
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception(
-          'Invalid response format',
-        );
-      }
-
-      final rawFacilities =
-          decoded['facilities'];
-
-      if (rawFacilities is! List) {
-        throw Exception(
-          'No facilities found in server response.',
-        );
-      }
-
-      final facilities =
-          rawFacilities
-              .whereType<Map<String, dynamic>>()
-              .map(
-                (item) =>
-                    Doctor.fromJson(item),
-              )
-              .toList();
-
-      print(
-        'Found ${facilities.length} doctors',
-      );
-
-      return facilities;
-    } catch (e) {
-      print(
-        'Error finding doctors: $e',
-      );
-      rethrow;
     }
+
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception(
+        'Invalid doctor response from server.',
+      );
+    }
+
+    if (decoded['error'] != null) {
+      throw Exception(
+        decoded['error'].toString(),
+      );
+    }
+
+    final rawFacilities = decoded['facilities'];
+
+    if (rawFacilities is! List) {
+      throw Exception(
+        'Server did not return a facilities list.',
+      );
+    }
+
+    final facilities = rawFacilities
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (item) => Doctor.fromJson(item),
+        )
+        .where(
+          (doctor) =>
+              doctor.latitude != 0 &&
+              doctor.longitude != 0 &&
+              doctor.name.isNotEmpty,
+        )
+        .toList();
+
+    print(
+      'Found ${facilities.length} valid healthcare facilities',
+    );
+
+    return facilities;
+  } catch (e) {
+    print(
+      'ERROR IN DOCTOR FINDER: $e',
+    );
+
+    rethrow;
   }
+}
+  
 
   // ============================================================
   // GEOCODE ADDRESS

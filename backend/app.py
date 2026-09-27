@@ -1,3 +1,4 @@
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import joblib
@@ -58,7 +59,7 @@ if OPENROUTER_API_KEY:
 # ============================================================
 
 GOOGLE_PLACES_API_KEY = os.environ.get(
-    'GOOGLE_PLACES_API_KEY'
+    "GOOGLE_PLACES_API_KEY"
 )
 
 
@@ -385,390 +386,1239 @@ def get_model_feature_importance():
 
 @app.route('/', methods=['GET'])
 def root():
+
     return jsonify({
+
         'status': 'success',
+
         'message': 'Asha backend is running'
+
     }), 200
 
 
 # ============================================================
-# PREDICTION ENDPOINT - UPDATED WITH VALIDATION
+# PREDICTION ENDPOINT
 # ============================================================
 
 @app.route('/predict/<user_id>', methods=['POST'])
 def predict(user_id):
+
     """
     Make a menstrual cycle prediction based on user health profile.
-    Requires: cycle_length, period_length, age, bmi, stress_level, last_period_date
-    Optional: exercise_frequency, sleep_hours, diet, pcos
+
+    Required:
+        cycle_length
+        period_length
+        age
+        bmi
+        stress_level
+        last_period_date
+
+    Optional:
+        exercise_frequency
+        sleep_hours
+        diet
+        pcos
     """
-    
+
     try:
+
         data = request.get_json()
-        
+
         if not data:
+
             return jsonify({
+
                 'error': 'No data provided',
+
                 'status': 'incomplete_profile',
-                'message': 'Please complete your health profile'
+
+                'message':
+                    'Please complete your health profile'
+
             }), 400
-        
-        print(f'Prediction request received for user: {user_id}')
-        print(f'Prediction profile: {data}')
-        
+
+
+        print(
+            f'Prediction request received for user: {user_id}'
+        )
+
+        print(
+            f'Prediction profile: {data}'
+        )
+
+
         # ======================================================
         # EXTRACT AND VALIDATE REQUIRED FIELDS
         # ======================================================
-        
-        cycle_length = get_int(data, 'cycle_length', 28)
-        period_length = get_int(data, 'period_length')
-        age = get_int(data, 'age')
-        bmi = get_number(data, 'bmi')
-        stress_level = get_int(data, 'stress_level') or get_int(data, 'stress')
-        
-        # ======================================================
-        # VALIDATION: Check for required fields
-        # ======================================================
-        
-        missing_fields = []
-        
-        if age is None:
-            missing_fields.append('age')
-        if period_length is None:
-            missing_fields.append('period_length')
-        if bmi is None:
-            missing_fields.append('bmi')
-        if stress_level is None:
-            missing_fields.append('stress_level')
-        
-        # Check for last_period_date
-        last_period_date = data.get('last_period_date')
-        if not is_valid_date_string(last_period_date):
-            missing_fields.append('last_period_date')
-        
-        # ======================================================
-        # IF MISSING REQUIRED FIELDS: Return error with missing fields
-        # ======================================================
-        
-        if missing_fields:
-            print(f'Missing prediction data: {missing_fields}')
-            return jsonify({
-                'status': 'incomplete_profile',
-                'missing_fields': missing_fields,
-                'message': f'Please complete your profile. Missing: {", ".join(missing_fields)}',
-                'prediction': None,
-                'next_period': None,
-                'fertile_window': None,
-                'confidence': 0
-            }), 400
-        
-        # ======================================================
-        # EXTRACT OPTIONAL FIELDS
-        # ======================================================
-        
-        exercise_frequency = encode_exercise(
-            data.get('exercise_frequency', 1)
-        ) or 1
-        
-        sleep_hours = get_number(
-            data, 'sleep_hours', 7
+
+        cycle_length = get_int(
+            data,
+            'cycle_length'
         )
-        
+
+        period_length = get_int(
+            data,
+            'period_length'
+        )
+
+        age = get_int(
+            data,
+            'age'
+        )
+
+        bmi = get_number(
+            data,
+            'bmi'
+        )
+
+
+        # 0 is a valid stress value.
+        stress_level = get_int(
+            data,
+            'stress_level'
+        )
+
+        if stress_level is None:
+
+            stress_level = get_int(
+                data,
+                'stress'
+            )
+
+
+        # ======================================================
+        # VALIDATION
+        # ======================================================
+
+        missing_fields = []
+
+
+        if cycle_length is None:
+
+            missing_fields.append(
+                'cycle_length'
+            )
+
+
+        if age is None:
+
+            missing_fields.append(
+                'age'
+            )
+
+
+        if period_length is None:
+
+            missing_fields.append(
+                'period_length'
+            )
+
+
+        if bmi is None:
+
+            missing_fields.append(
+                'bmi'
+            )
+
+
+        if stress_level is None:
+
+            missing_fields.append(
+                'stress_level'
+            )
+
+
+        # ======================================================
+        # LAST PERIOD DATE
+        # ======================================================
+
+        last_period_date = data.get(
+            'last_period_date'
+        )
+
+
+        if not is_valid_date_string(
+            last_period_date
+        ):
+
+            missing_fields.append(
+                'last_period_date'
+            )
+
+
+        # ======================================================
+        # RETURN INCOMPLETE PROFILE
+        # ======================================================
+
+        if missing_fields:
+
+            print(
+                f'Missing prediction data: {missing_fields}'
+            )
+
+            return jsonify({
+
+                'status':
+                    'incomplete_profile',
+
+                'missing_fields':
+                    missing_fields,
+
+                'message':
+                    'Please complete your profile. '
+                    f'Missing: {", ".join(missing_fields)}',
+
+                'prediction':
+                    None,
+
+                'next_period':
+                    None,
+
+                'fertile_window':
+                    None,
+
+                'confidence':
+                    0
+
+            }), 400
+
+
+        # ======================================================
+        # OPTIONAL FIELDS
+        # ======================================================
+
+        exercise_frequency = encode_exercise(
+            data.get(
+                'exercise_frequency',
+                'moderate'
+            )
+        )
+
+        if exercise_frequency is None:
+
+            exercise_frequency = 1
+
+
+        sleep_hours = get_number(
+            data,
+            'sleep_hours',
+            7
+        )
+
+
         diet = encode_diet(
-            data.get('diet', 'Low Carb')
-        ) or 0
-        
-        pcos = get_int(data, 'pcos', 0)
-        
+            data.get(
+                'diet',
+                'low carb'
+            )
+        )
+
+        if diet is None:
+
+            diet = 0
+
+
+        pcos = get_int(
+            data,
+            'pcos',
+            0
+        )
+
+
         # ======================================================
         # PREPARE FEATURES FOR MODEL
         # ======================================================
-        
+
         features = [
+
             cycle_length,
+
             period_length,
+
             age,
+
             bmi,
+
             stress_level,
+
             exercise_frequency,
+
             sleep_hours,
+
             diet,
+
             pcos
+
         ]
-        
-        print(f'Features: {features}')
-        print(f'Feature order: {FEATURE_ORDER}')
-        
+
+
+        print(
+            f'Features: {features}'
+        )
+
+        print(
+            f'Feature order: {FEATURE_ORDER}'
+        )
+
+
         # ======================================================
-        # MAKE PREDICTION
+        # MAKE ML PREDICTION
         # ======================================================
-        
+
         if model is None:
+
             return jsonify({
-                'error': 'ML model not available',
-                'status': 'server_error'
+
+                'error':
+                    'ML model not available',
+
+                'status':
+                    'server_error'
+
             }), 500
-        
+
+
         try:
-            df = pd.DataFrame([features], columns=FEATURE_ORDER)
-            prediction = model.predict(df)[0]
-            confidence = model.predict_proba(df)[0].max() * 100 if hasattr(model, 'predict_proba') else 0
-            
+
+            df = pd.DataFrame(
+
+                [features],
+
+                columns=FEATURE_ORDER
+
+            )
+
+
+            print(
+                f'Model input DataFrame:\n{df}'
+            )
+
+            print(
+                f'Model type: {type(model).__name__}'
+            )
+
+
+            raw_prediction = model.predict(
+                df
+            )[0]
+
+
         except Exception as e:
-            print(f'Prediction error: {e}')
+
+            print(
+                f'Prediction error: {e}'
+            )
+
             return jsonify({
-                'error': 'Failed to make prediction',
-                'message': str(e),
-                'status': 'prediction_error'
+
+                'error':
+                    'Failed to make prediction',
+
+                'message':
+                    str(e),
+
+                'status':
+                    'prediction_error'
+
             }), 500
-        
+
+
+        # ======================================================
+        # CONFIDENCE
+        # ======================================================
+
+        try:
+
+            if hasattr(
+                model,
+                'predict_proba'
+            ):
+
+                confidence = (
+                    float(
+                        model.predict_proba(
+                            df
+                        )[0].max()
+                    ) * 100
+                )
+
+            else:
+
+                # Regression models such as DecisionTreeRegressor
+                # do not have predict_proba().
+                confidence = 75.0
+
+        except Exception as e:
+
+            print(
+                f'Confidence calculation error: {e}'
+            )
+
+            confidence = 75.0
+
+
+        # ======================================================
+        # KEEP PREDICTED CYCLE IN REASONABLE RANGE
+        # ======================================================
+
+        predicted_days = int(
+            round(
+                float(
+                    raw_prediction
+                )
+            )
+        )
+
+
+        predicted_days = max(
+            15,
+            min(
+                predicted_days,
+                45
+            )
+        )
+
+
+        print(
+            f'Raw ML prediction: {raw_prediction}'
+        )
+
+        print(
+            f'Final predicted cycle length: {predicted_days}'
+        )
+
+
         # ======================================================
         # CALCULATE CYCLE DATES
         # ======================================================
-        
+
         last_period = datetime.fromisoformat(
-            last_period_date.replace('Z', '+00:00')
+
+            str(
+                last_period_date
+            ).replace(
+                'Z',
+                '+00:00'
+            )
+
         )
-        
-        next_period = last_period + timedelta(days=prediction)
-        
-        # Fertile window: 5 days before ovulation (14 days before next period)
-        ovulation = next_period - timedelta(days=14)
-        fertile_start = ovulation - timedelta(days=5)
+
+
+        # Convert timezone-aware datetime to naive datetime.
+        if last_period.tzinfo is not None:
+
+            last_period = (
+                last_period
+                .astimezone(tz=None)
+                .replace(tzinfo=None)
+            )
+
+
+        # ======================================================
+        # NEXT PERIOD
+        # ======================================================
+
+        next_period = (
+            last_period
+            + timedelta(
+                days=predicted_days
+            )
+        )
+
+
+        # ======================================================
+        # OVULATION
+        # ======================================================
+
+        ovulation = (
+            next_period
+            - timedelta(
+                days=14
+            )
+        )
+
+
+        # ======================================================
+        # FERTILE WINDOW
+        # ======================================================
+
+        fertile_start = (
+            ovulation
+            - timedelta(
+                days=5
+            )
+        )
+
+
         fertile_end = ovulation
-        
+
+
+        # ======================================================
+        # CURRENT CYCLE DAY
+        # ======================================================
+
+        cycle_day_at_prediction = (
+
+            datetime.now()
+            - last_period
+
+        ).days + 1
+
+
+        if cycle_day_at_prediction < 1:
+
+            cycle_day_at_prediction = 1
+
+
+        # ======================================================
+        # CYCLE PROGRESS
+        # ======================================================
+
+        cycle_progress = (
+
+            cycle_day_at_prediction
+            / predicted_days
+
+        )
+
+
+        cycle_progress = max(
+            0.0,
+            min(
+                cycle_progress,
+                1.0
+            )
+        )
+
+
+        # ======================================================
+        # CYCLE PHASE
+        # ======================================================
+
+        if cycle_day_at_prediction <= period_length:
+
+            phase_label = 'Menstrual Phase'
+
+        elif cycle_day_at_prediction < (
+            predicted_days - 14
+        ):
+
+            phase_label = 'Follicular Phase'
+
+        else:
+
+            phase_label = 'Luteal Phase'
+
+
+        # ======================================================
+        # PCOS STATUS
+        # ======================================================
+
+        if pcos == 1:
+
+            pcos_status = 'Reported PCOS'
+
+        else:
+
+            pcos_status = 'No PCOS reported'
+
+
+        # ======================================================
+        # MODEL FEATURE IMPORTANCE
+        # ======================================================
+
+        factor_weights = (
+            get_model_feature_importance()
+        )
+
+
         # ======================================================
         # RETURN SUCCESSFUL RESPONSE
         # ======================================================
-        
+
         return jsonify({
-            'status': 'success',
-            'prediction': int(prediction),
-            'next_period': next_period.isoformat(),
-            'ovulation_date': ovulation.isoformat(),
+
+            'status':
+                'success',
+
+            # --------------------------------------------------
+            # ML PREDICTION
+            # --------------------------------------------------
+
+            'prediction':
+                predicted_days,
+
+            'predicted_cycle_length':
+                predicted_days,
+
+
+            # --------------------------------------------------
+            # NEXT PERIOD
+            # --------------------------------------------------
+
+            'next_period':
+                next_period.date().isoformat(),
+
+            'next_period_label':
+                next_period.strftime(
+                    '%d/%m/%Y'
+                ),
+
+
+            # --------------------------------------------------
+            # OVULATION
+            # --------------------------------------------------
+
+            'ovulation_date':
+                ovulation.date().isoformat(),
+
+
+            # --------------------------------------------------
+            # FERTILE WINDOW
+            # --------------------------------------------------
+
             'fertile_window': {
-                'start': fertile_start.isoformat(),
-                'end': fertile_end.isoformat()
+
+                'start':
+                    fertile_start.date().isoformat(),
+
+                'end':
+                    fertile_end.date().isoformat()
+
             },
-            'confidence': round(confidence, 2),
-            'cycle_day_at_prediction': (
-                (datetime.now() - last_period).days + 1
-            )
+
+            'fertile_window_label': (
+
+                f"{fertile_start.strftime('%d/%m/%Y')}"
+                f" - "
+                f"{fertile_end.strftime('%d/%m/%Y')}"
+
+            ),
+
+
+            # --------------------------------------------------
+            # AI / MODEL CONFIDENCE
+            # --------------------------------------------------
+
+            'confidence':
+                round(
+                    confidence,
+                    2
+                ),
+
+
+            # --------------------------------------------------
+            # CURRENT CYCLE
+            # --------------------------------------------------
+
+            'current_day':
+                cycle_day_at_prediction,
+
+            'cycle_day_at_prediction':
+                cycle_day_at_prediction,
+
+
+            # --------------------------------------------------
+            # PHASE
+            # --------------------------------------------------
+
+            'phase_label':
+                phase_label,
+
+
+            # --------------------------------------------------
+            # CYCLE PROGRESS
+            # --------------------------------------------------
+
+            'cycle_progress':
+                cycle_progress,
+
+
+            # --------------------------------------------------
+            # MODEL FACTOR WEIGHTS
+            # --------------------------------------------------
+
+            'factor_weights':
+                factor_weights,
+
+
+            # --------------------------------------------------
+            # PCOS
+            # --------------------------------------------------
+
+            'pcos_risk':
+                pcos_status,
+
+
+            # --------------------------------------------------
+            # PROFILE / CYCLE INFORMATION
+            # --------------------------------------------------
+
+            'avg_cycle_length':
+                cycle_length,
+
+            'avg_period_length':
+                period_length,
+
+            'cycle_length_history': [
+                cycle_length
+            ]
+
         }), 200
-        
+
+
     except Exception as e:
-        print(f'Unexpected error in /predict: {e}')
+
+        print(
+            f'Unexpected error in /predict: {e}'
+        )
+
         return jsonify({
-            'error': 'Unexpected server error',
-            'message': str(e)
+
+            'error':
+                'Unexpected server error',
+
+            'message':
+                str(e)
+
         }), 500
 
 
 # ============================================================
-# FIND DOCTORS ENDPOINT - NEW
+# FIND DOCTORS ENDPOINT
+# ============================================================
+
+# ============================================================
+# FIND NEARBY DOCTORS / HOSPITALS / CLINICS
+# GOOGLE PLACES API (NEW)
 # ============================================================
 
 @app.route('/find-doctors', methods=['POST'])
 def find_doctors():
-    """
-    Find nearby doctors, clinics, and hospitals using Google Places API.
-    
-    Expected request body:
-    {
-        "latitude": 19.0760,
-        "longitude": 72.8777,
-        "radius": 5000  // in meters (default: 5km)
-    }
-    """
-    
+
     try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({
-                'error': 'No location data provided',
-                'status': 'invalid_request'
-            }), 400
-        
+        data = request.get_json(silent=True) or {}
+
         latitude = data.get('latitude')
         longitude = data.get('longitude')
-        radius = data.get('radius', 5000)  # Default 5km
-        
-        # ======================================================
-        # VALIDATE COORDINATES
-        # ======================================================
-        
+        radius = data.get('radius', 5000)
+
+        print("==============================================")
+        print("DOCTOR FINDER REQUEST")
+        print(f"Latitude: {latitude}")
+        print(f"Longitude: {longitude}")
+        print(f"Radius: {radius}")
+        print("==============================================")
+
+        # --------------------------------------------------------
+        # VALIDATE LOCATION
+        # --------------------------------------------------------
+
         if latitude is None or longitude is None:
             return jsonify({
-                'error': 'Latitude and longitude are required',
-                'status': 'invalid_coordinates'
+                'error': 'Latitude and longitude are required.'
             }), 400
-        
+
         try:
             latitude = float(latitude)
             longitude = float(longitude)
             radius = int(radius)
-        except (ValueError, TypeError):
+        except (TypeError, ValueError):
             return jsonify({
-                'error': 'Invalid coordinate values',
-                'status': 'invalid_coordinates'
+                'error': 'Invalid latitude, longitude or radius.'
             }), 400
-        
-        # ======================================================
-        # SEARCH FOR DOCTORS/HOSPITALS
-        # ======================================================
-        
-        if not GOOGLE_PLACES_API_KEY:
-            print('⚠️ GOOGLE_PLACES_API_KEY not configured')
+
+        if not (-90 <= latitude <= 90):
             return jsonify({
-                'error': 'Healthcare provider service not available',
-                'status': 'service_unavailable',
-                'facilities': []
-            }), 503
-        
-        # Search parameters
-        location = f"{latitude},{longitude}"
+                'error': 'Invalid latitude.'
+            }), 400
+
+        if not (-180 <= longitude <= 180):
+            return jsonify({
+                'error': 'Invalid longitude.'
+            }), 400
+
+        # Keep radius within Google's practical range
+        radius = max(100, min(radius, 50000))
+
+        # --------------------------------------------------------
+        # GOOGLE API KEY
+        # --------------------------------------------------------
+
+        google_api_key = os.environ.get(
+            'GOOGLE_PLACES_API_KEY'
+        )
+
+        if not google_api_key:
+            print(
+                "ERROR: GOOGLE_PLACES_API_KEY is missing."
+            )
+
+            return jsonify({
+                'error':
+                    'Google Places API key is not configured '
+                    'on the server.'
+            }), 500
+
+        # --------------------------------------------------------
+        # GOOGLE PLACES API (NEW)
+        # --------------------------------------------------------
+
+        url = (
+            'https://places.googleapis.com/v1/places:searchNearby'
+        )
+
+        headers = {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': google_api_key,
+            'X-Goog-FieldMask': (
+                'places.id,'
+                'places.displayName,'
+                'places.location,'
+                'places.formattedAddress,'
+                'places.rating,'
+                'places.currentOpeningHours'
+            ),
+        }
+
+        # Search valid medical facility types.
+        #
+        # We make separate requests so that if one category
+        # fails, the other categories can still work.
+
         search_types = [
             'doctor',
             'hospital',
-            'health',
-            'gynecologist'
+            'medical_clinic',
         ]
-        
+
         all_facilities = []
-        
+
         for search_type in search_types:
+
+            print(
+                f"Searching Google Places for: "
+                f"{search_type}"
+            )
+
+            payload = {
+                'includedTypes': [
+                    search_type
+                ],
+                'maxResultCount': 20,
+                'locationRestriction': {
+                    'circle': {
+                        'center': {
+                            'latitude': latitude,
+                            'longitude': longitude,
+                        },
+                        'radius': float(radius),
+                    }
+                },
+            }
+
             try:
-                google_places_url = (
-                    f"https://maps.googleapis.com/maps/api/place/nearbysearch/json"
-                    f"?location={location}"
-                    f"&radius={radius}"
-                    f"&type={search_type}"
-                    f"&key={GOOGLE_PLACES_API_KEY}"
+                google_response = requests.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                    timeout=20,
                 )
-                
-                response = requests.get(
-                    google_places_url,
-                    timeout=10
+
+                print(
+                    f"Google response for "
+                    f"{search_type}: "
+                    f"{google_response.status_code}"
                 )
-                
-                if response.status_code == 200:
-                    results = response.json().get('results', [])
-                    
-                    for place in results:
-                        facility = {
-                            'id': place.get('place_id'),
-                            'name': place.get('name'),
-                            'latitude': place.get('geometry', {}).get('location', {}).get('lat'),
-                            'longitude': place.get('geometry', {}).get('location', {}).get('lng'),
-                            'address': place.get('vicinity'),
-                            'type': search_type,
-                            'rating': place.get('rating'),
-                            'is_open': place.get('opening_hours', {}).get('open_now'),
-                        }
-                        all_facilities.append(facility)
-                
-            except requests.exceptions.Timeout:
-                print(f'Timeout searching for {search_type}')
+
+                print(
+                    f"Google body for "
+                    f"{search_type}: "
+                    f"{google_response.text[:2000]}"
+                )
+
+            except requests.RequestException as e:
+
+                print(
+                    f"Google request failed for "
+                    f"{search_type}: {e}"
+                )
+
                 continue
-            except Exception as e:
-                print(f'Error searching for {search_type}: {e}')
+
+            # ----------------------------------------------------
+            # HANDLE GOOGLE ERROR
+            # ----------------------------------------------------
+
+            if google_response.status_code != 200:
+
+                print(
+                    f"Google Places error for "
+                    f"{search_type}: "
+                    f"{google_response.text}"
+                )
+
                 continue
-        
-        # ======================================================
-        # REMOVE DUPLICATES AND SORT BY RATING
-        # ======================================================
-        
-        seen_ids = set()
-        unique_facilities = []
-        
+
+            try:
+                google_data = google_response.json()
+            except ValueError:
+
+                print(
+                    f"Invalid JSON from Google for "
+                    f"{search_type}"
+                )
+
+                continue
+
+            # ----------------------------------------------------
+            # READ PLACES
+            # ----------------------------------------------------
+
+            places = google_data.get(
+                'places',
+                []
+            )
+
+            print(
+                f"Google returned "
+                f"{len(places)} places for "
+                f"{search_type}"
+            )
+
+            for place in places:
+
+                place_id = place.get('id')
+
+                display_name = place.get(
+                    'displayName',
+                    {}
+                )
+
+                name = display_name.get(
+                    'text',
+                    'Unknown'
+                )
+
+                location = place.get(
+                    'location',
+                    {}
+                )
+
+                place_latitude = location.get(
+                    'latitude'
+                )
+
+                place_longitude = location.get(
+                    'longitude'
+                )
+
+                if (
+                    not place_id
+                    or place_latitude is None
+                    or place_longitude is None
+                ):
+                    continue
+
+                opening_hours = place.get(
+                    'currentOpeningHours'
+                )
+
+                is_open = None
+
+                if isinstance(
+                    opening_hours,
+                    dict
+                ):
+                    is_open = opening_hours.get(
+                        'openNow'
+                    )
+
+                facility = {
+                    'id': str(place_id),
+
+                    'name': str(name),
+
+                    'latitude': float(
+                        place_latitude
+                    ),
+
+                    'longitude': float(
+                        place_longitude
+                    ),
+
+                    'address': place.get(
+                        'formattedAddress'
+                    ),
+
+                    'type': search_type,
+
+                    'rating': place.get(
+                        'rating'
+                    ),
+
+                    'is_open': is_open,
+                }
+
+                all_facilities.append(
+                    facility
+                )
+
+        # --------------------------------------------------------
+        # REMOVE DUPLICATES
+        # --------------------------------------------------------
+
+        unique_facilities = {}
+
         for facility in all_facilities:
-            facility_id = facility['id']
-            if facility_id not in seen_ids:
-                seen_ids.add(facility_id)
-                unique_facilities.append(facility)
-        
-        # Sort by rating (highest first)
-        unique_facilities.sort(
-            key=lambda x: x.get('rating') or 0,
-            reverse=True
+
+            facility_id = facility.get('id')
+
+            if facility_id:
+                unique_facilities[
+                    facility_id
+                ] = facility
+
+        facilities = list(
+            unique_facilities.values()
         )
-        
-        # ======================================================
-        # RETURN RESULTS
-        # ======================================================
-        
+
+        # --------------------------------------------------------
+        # SORT BY RATING
+        # --------------------------------------------------------
+
+        facilities.sort(
+            key=lambda x: (
+                x.get('rating') or 0
+            ),
+            reverse=True,
+        )
+
+        facilities = facilities[:30]
+
+        print("==============================================")
+        print(
+            f"TOTAL UNIQUE FACILITIES: "
+            f"{len(facilities)}"
+        )
+
+        for facility in facilities[:10]:
+            print(
+                facility.get('name'),
+                facility.get('latitude'),
+                facility.get('longitude'),
+                facility.get('type'),
+            )
+
+        print("==============================================")
+
         return jsonify({
-            'status': 'success',
-            'location': {
-                'latitude': latitude,
-                'longitude': longitude,
-                'radius': radius
-            },
-            'facilities': unique_facilities[:20],  # Top 20 results
-            'total_found': len(unique_facilities)
+            'success': True,
+            'facilities': facilities,
+            'count': len(facilities),
         }), 200
-        
+
     except Exception as e:
-        print(f'Error in /find-doctors: {e}')
+
+        print(
+            "=============================================="
+        )
+
+        print(
+            f"DOCTOR FINDER SERVER ERROR: {e}"
+        )
+
+        print(
+            "=============================================="
+        )
+
         return jsonify({
-            'error': 'Failed to find healthcare providers',
-            'message': str(e),
-            'status': 'server_error'
+            'error':
+                'Doctor finder server error.',
+            'details': str(e),
         }), 500
 
-
 # ============================================================
-# GET DOCTOR DETAILS ENDPOINT - NEW
+# GET DOCTOR DETAILS
+# GOOGLE PLACES API (NEW)
 # ============================================================
 
-@app.route('/find-doctors/<place_id>', methods=['GET'])
+@app.route(
+    '/find-doctors/<path:place_id>',
+    methods=['GET']
+)
 def get_doctor_details(place_id):
-    """
-    Get detailed information about a specific healthcare facility.
-    """
-    
-    if not GOOGLE_PLACES_API_KEY:
-        return jsonify({
-            'error': 'Service unavailable',
-            'status': 'service_unavailable'
-        }), 503
-    
+
     try:
-        url = (
-            f"https://maps.googleapis.com/maps/api/place/details/json"
-            f"?place_id={place_id}"
-            f"&fields=formatted_address,formatted_phone_number,website,opening_hours,rating,reviews"
-            f"&key={GOOGLE_PLACES_API_KEY}"
+
+        google_api_key = os.environ.get(
+            'GOOGLE_PLACES_API_KEY'
         )
-        
-        response = requests.get(url, timeout=10)
-        
-        if response.status_code == 200:
-            result = response.json().get('result', {})
-            
+
+        if not google_api_key:
+
             return jsonify({
-                'status': 'success',
-                'details': {
-                    'address': result.get('formatted_address'),
-                    'phone': result.get('formatted_phone_number'),
-                    'website': result.get('website'),
-                    'opening_hours': result.get('opening_hours'),
-                    'rating': result.get('rating'),
-                    'reviews': result.get('reviews', [])[:5]  # Top 5 reviews
-                }
-            }), 200
+                'error':
+                    'Google Places API key is not configured.'
+            }), 500
+
+        print("==============================================")
+        print("DOCTOR DETAILS REQUEST")
+        print(f"Place ID: {place_id}")
+        print("==============================================")
+
+        # Google Places API (New) uses:
+        # GET /v1/places/{place_id}
+
+        # The search endpoint returns IDs such as:
+        # places/ChIJxxxxxxxx
+        #
+        # If only the final ID is supplied, add "places/".
+
+        if not place_id.startswith('places/'):
+
+            place_resource = f'places/{place_id}'
+
         else:
+
+            place_resource = place_id
+
+        url = (
+            'https://places.googleapis.com/v1/'
+            f'{place_resource}'
+        )
+
+        headers = {
+            'X-Goog-Api-Key': google_api_key,
+
+            'X-Goog-FieldMask': (
+                'id,'
+                'displayName,'
+                'formattedAddress,'
+                'nationalPhoneNumber,'
+                'internationalPhoneNumber,'
+                'websiteUri,'
+                'rating,'
+                'currentOpeningHours,'
+                'reviews'
+            ),
+        }
+
+        response = requests.get(
+            url,
+            headers=headers,
+            timeout=20
+        )
+
+        print(
+            f"Google Details Response: "
+            f"{response.status_code}"
+        )
+
+        print(
+            f"Google Details Body: "
+            f"{response.text[:3000]}"
+        )
+
+        if response.status_code != 200:
+
             return jsonify({
-                'error': 'Place not found',
-                'status': 'not_found'
-            }), 404
-            
-    except Exception as e:
-        print(f'Error getting doctor details: {e}')
+
+                'error':
+                    'Could not get facility details.',
+
+                'details':
+                    response.text
+
+            }), response.status_code
+
+        place = response.json()
+
+        display_name = place.get(
+            'displayName',
+            {}
+        )
+
+        opening_hours = place.get(
+            'currentOpeningHours'
+        )
+
+        is_open = None
+
+        if isinstance(
+            opening_hours,
+            dict
+        ):
+
+            is_open = opening_hours.get(
+                'openNow'
+            )
+
+        details = {
+
+            'address':
+                place.get(
+                    'formattedAddress'
+                ),
+
+            'phone':
+                place.get(
+                    'nationalPhoneNumber'
+                    or
+                    'internationalPhoneNumber'
+                ),
+
+            'website':
+                place.get(
+                    'websiteUri'
+                ),
+
+            'opening_hours':
+                opening_hours,
+
+            'rating':
+                place.get(
+                    'rating'
+                ),
+
+            'reviews':
+                place.get(
+                    'reviews',
+                    []
+                )[:5]
+
+        }
+
         return jsonify({
-            'error': 'Failed to get details',
-            'message': str(e)
+
+            'status':
+                'success',
+
+            'name':
+                display_name.get(
+                    'text'
+                ),
+
+            'details':
+                details
+
+        }), 200
+
+    except Exception as e:
+
+        print(
+            f'Error getting doctor details: {e}'
+        )
+
+        return jsonify({
+
+            'error':
+                'Failed to get doctor details',
+
+            'message':
+                str(e)
+
         }), 500
 
 
@@ -776,26 +1626,55 @@ def get_doctor_details(place_id):
 # LOG SYMPTOMS ENDPOINT
 # ============================================================
 
-@app.route('/log/<user_id>', methods=['POST'])
+@app.route(
+    '/log/<user_id>',
+    methods=['POST']
+)
 def log_symptoms(user_id):
-    """Log symptoms for a user."""
-    
+
+    """
+    Log symptoms for a user.
+    """
+
     try:
+
         data = request.get_json()
-        
-        print(f'Symptoms logged for user: {user_id}')
-        print(f'Data: {data}')
-        
+
+
+        print(
+            f'Symptoms logged for user: {user_id}'
+        )
+
+        print(
+            f'Data: {data}'
+        )
+
+
         return jsonify({
-            'status': 'success',
-            'message': 'Symptoms logged successfully'
+
+            'status':
+                'success',
+
+            'message':
+                'Symptoms logged successfully'
+
         }), 200
-        
+
+
     except Exception as e:
-        print(f'Error logging symptoms: {e}')
+
+        print(
+            f'Error logging symptoms: {e}'
+        )
+
         return jsonify({
-            'error': 'Failed to log symptoms',
-            'message': str(e)
+
+            'error':
+                'Failed to log symptoms',
+
+            'message':
+                str(e)
+
         }), 500
 
 
@@ -803,65 +1682,151 @@ def log_symptoms(user_id):
 # CHAT ENDPOINT - ASHA AI
 # ============================================================
 
-@app.route('/chat', methods=['POST'])
+@app.route(
+    '/chat',
+    methods=['POST']
+)
 def chat():
-    """Chat with Asha AI."""
-    
+
+    """
+    Chat with Asha AI.
+    """
+
     try:
+
         data = request.get_json()
-        
-        message = data.get('message')
-        history = data.get('history', [])
-        
-        if not message:
-            return jsonify({
-                'error': 'No message provided',
-                'status': 'invalid_request'
-            }), 400
-        
-        if not client:
-            return jsonify({
-                'error': 'AI service not available',
-                'status': 'service_unavailable'
-            }), 503
-        
-        # Build conversation
-        messages = [
-            {'role': 'system', 'content': SYSTEM_PROMPT}
-        ]
-        
-        # Add history
-        for item in history:
-            messages.append({
-                'role': item.get('role', 'user'),
-                'content': item.get('content', '')
-            })
-        
-        # Add current message
-        messages.append({
-            'role': 'user',
-            'content': message
-        })
-        
-        # Get response
-        response = client.messages.create(
-            model=AI_MODELS[0],
-            max_tokens=1000,
-            messages=messages
+
+
+        message = data.get(
+            'message'
         )
-        
+
+        history = data.get(
+            'history',
+            []
+        )
+
+
+        if not message:
+
+            return jsonify({
+
+                'error':
+                    'No message provided',
+
+                'status':
+                    'invalid_request'
+
+            }), 400
+
+
+        if not client:
+
+            return jsonify({
+
+                'error':
+                    'AI service not available',
+
+                'status':
+                    'service_unavailable'
+
+            }), 503
+
+
+        # ======================================================
+        # BUILD CONVERSATION
+        # ======================================================
+
+        messages = [
+
+            {
+                'role':
+                    'system',
+
+                'content':
+                    SYSTEM_PROMPT
+
+            }
+
+        ]
+
+
+        for item in history:
+
+            messages.append({
+
+                'role':
+                    item.get(
+                        'role',
+                        'user'
+                    ),
+
+                'content':
+                    item.get(
+                        'content',
+                        ''
+                    )
+
+            })
+
+
+        messages.append({
+
+            'role':
+                'user',
+
+            'content':
+                message
+
+        })
+
+
+        # ======================================================
+        # GET AI RESPONSE
+        # ======================================================
+
+        response = client.messages.create(
+
+            model=AI_MODELS[0],
+
+            max_tokens=1000,
+
+            messages=messages
+
+        )
+
+
         reply = response.content[0].text
-        
+
+
         return jsonify({
-            'status': 'success',
-            'reply': reply
+
+            'status':
+                'success',
+
+            'reply':
+                reply
+
         }), 200
-        
+
+
     except Exception as e:
-        print(f'Error in chat: {e}')
+
+        print(
+            f'Error in chat: {e}'
+        )
+
         return jsonify({
-            'error': 'Failed to process chat',
-            'message': str(e)
+
+            'error':
+                'Failed to process chat',
+
+            'message':
+                str(e),
+
+            'status':
+                'server_error'
+
         }), 500
 
 
@@ -871,17 +1836,29 @@ def chat():
 
 @app.errorhandler(404)
 def not_found(error):
+
     return jsonify({
-        'error': 'Endpoint not found',
-        'status': 'not_found'
+
+        'error':
+            'Endpoint not found',
+
+        'status':
+            'not_found'
+
     }), 404
 
 
 @app.errorhandler(500)
 def internal_error(error):
+
     return jsonify({
-        'error': 'Internal server error',
-        'status': 'server_error'
+
+        'error':
+            'Internal server error',
+
+        'status':
+            'server_error'
+
     }), 500
 
 
@@ -890,4 +1867,10 @@ def internal_error(error):
 # ============================================================
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=10000)
+
+    app.run(
+        debug=False,
+        host='0.0.0.0',
+        port=10000
+    )
+

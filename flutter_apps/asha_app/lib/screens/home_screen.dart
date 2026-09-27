@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -11,9 +10,7 @@ import '../theme/asha_theme.dart';
 
 import 'discharge_tracker_screen.dart';
 import 'find_doctor_screen.dart';
-import 'library_screen.dart';
 import 'notification_screen.dart';
-import 'quick_log_screen.dart';
 import 'why_prediction_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -24,13 +21,26 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // ============================================================
+  // COLORS
+  // ============================================================
+
+  static const Color _mint = Color(0xFFDCEEDB);
+  static const Color _mintIcon = Color(0xFFE0555A);
+
+  static const Color _skyBlue = Color(0xFFDCEAF3);
+  static const Color _skyBlueIcon = Color(0xFF4E9B6E);
+
   Prediction? _prediction;
 
   bool _loading = false;
-
   String _errorMessage = '';
 
   Timer? _refreshTimer;
+
+  // ============================================================
+  // INIT / DISPOSE
+  // ============================================================
 
   @override
   void initState() {
@@ -65,12 +75,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      // Load the current user's locally stored profile first.
       await HealthProfileStore.load();
 
       if (!mounted) return;
 
-      // Get the CURRENTLY logged-in Firebase user.
       final uid = FirebaseAuth.instance.currentUser?.uid;
 
       if (uid == null || uid.isEmpty) {
@@ -85,18 +93,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-
-      /*
-       * IMPORTANT:
-       *
-       * We do NOT check:
-       * HealthProfileStore.hasRequiredPredictionData
-       *
-       * here.
-       *
-       * We send the current user's UID and profile to the backend.
-       */
-
+      // IMPORTANT:
+      // Prediction still comes from your backend / ML model.
       final result = await ApiService.fetchPrediction(
         userId: uid,
       ).timeout(
@@ -110,18 +108,9 @@ class _HomeScreenState extends State<HomeScreen> {
         _errorMessage = '';
         _loading = false;
       });
-
     } catch (e) {
-
       if (!mounted) return;
 
-      /*
-       * Do NOT create a fake/local prediction here.
-       *
-       * If the ML backend fails, show an error instead of
-       * displaying a different calculated date and making it
-       * look like the ML prediction.
-       */
       setState(() {
         _loading = false;
         _errorMessage =
@@ -129,30 +118,6 @@ class _HomeScreenState extends State<HomeScreen> {
             'Please try again.';
       });
     }
-  }
-
-  // ============================================================
-  // DATE FORMAT
-  // ============================================================
-
-  // ignore: unused_element
-  String _formatDate(DateTime date) {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-
-    return '${date.day} ${months[date.month - 1]}';
   }
 
   // ============================================================
@@ -213,6 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(
                 child: _buildHeader(),
               ),
+
               SliverToBoxAdapter(
                 child: _buildMainContent(),
               ),
@@ -231,9 +197,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         20,
-        18,
+        16,
         20,
-        8,
+        0,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -242,25 +208,29 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Hello, ${_getUserName()} 🌷',
-                  style: const TextStyle(
-                    color: AshaColors.ink,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 5),
                 const Text(
-                  'Let’s take care of you today.',
+                  'Good Morning',
                   style: TextStyle(
                     color: AshaColors.slate,
-                    fontSize: 13,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+
+                const SizedBox(height: 1),
+
+                Text(
+                  '${_getUserName()} 🌼',
+                  style: const TextStyle(
+                    color: AshaColors.ink,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
           ),
+
           _buildNotificationButton(),
         ],
       ),
@@ -268,30 +238,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildNotificationButton() {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          openScreen(
-            const NotificationScreen(),
-          );
-        },
-        child: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AshaColors.peachDark,
-            ),
-          ),
-          child: const Icon(
-            Icons.notifications_none_rounded,
-            color: AshaColors.coral,
-            size: 25,
-          ),
+    return InkWell(
+      borderRadius: BorderRadius.circular(30),
+      onTap: () {
+        openScreen(
+          const NotificationScreen(),
+        );
+      },
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.notifications,
+          color: AshaColors.ink,
+          size: 17,
         ),
       ),
     );
@@ -319,41 +283,38 @@ class _HomeScreenState extends State<HomeScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         20,
-        10,
+        24,
         20,
-        30,
+        25,
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (_errorMessage.isNotEmpty)
             _buildErrorCard(),
 
-          _buildCycleCard(),
+          // ==================================================
+          // CENTER CYCLE CIRCLE
+          // ==================================================
 
-          const SizedBox(height: 4),
+          _buildCycleRing(),
+
+          // Small gap between circle and prediction cards
+          const SizedBox(height: 18),
+
+          // ==================================================
+          // NEXT PERIOD + FERTILE WINDOW
+          // ==================================================
 
           _buildPredictionCards(),
 
-          const SizedBox(height: 4),
+          const SizedBox(height: 15),
 
-          _buildQuickActions(),
+          // ==================================================
+          // ACTION BUTTONS
+          // ==================================================
 
-          const SizedBox(height: 4),
-
-          _buildHealthInsight(),
-
-          const SizedBox(height: 4),
-
-          _buildDoctorCard(),
-
-          const SizedBox(height: 4),
-
-          _buildAshaCard(),
-
-          const SizedBox(height: 8),
-
-          _buildPredictionInfoButton(),
+          _buildActionButtons(),
         ],
       ),
     );
@@ -365,9 +326,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildErrorCard() {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: AshaCard(
-        tint: AshaColors.peach,
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AshaColors.peach,
+          borderRadius: BorderRadius.circular(18),
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -375,15 +341,22 @@ class _HomeScreenState extends State<HomeScreen> {
               Icons.info_outline_rounded,
               color: AshaColors.coral,
             ),
+
             const SizedBox(width: 12),
+
             Expanded(
               child: Text(
                 _errorMessage,
                 style: const TextStyle(
                   color: AshaColors.ink,
-                  fontSize: 13,
+                  fontSize: 12,
                 ),
               ),
+            ),
+
+            TextButton(
+              onPressed: () => _loadHomeData(),
+              child: const Text('Retry'),
             ),
           ],
         ),
@@ -392,215 +365,193 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // CYCLE CARD
+  // CYCLE RING
+  //
+  // REFERENCE UI:
+  //
+  //       DAY 2
+  //   Menstrual Phase
+  //   AI confidence 87%
+  //
   // ============================================================
 
-  Widget _buildCycleCard() {
+  Widget _buildCycleRing() {
     final prediction = _prediction;
 
     if (prediction == null) {
-      return AshaCard(
-        tint: AshaColors.peach,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AshaColors.coral,
-                  ),
-                  child: const Icon(
-                    Icons.favorite_rounded,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Your prediction is unavailable',
-                    style: TextStyle(
-                      color: AshaColors.ink,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
+      return Column(
+        children: [
+          const SizedBox(height: 20),
+
+          const Icon(
+            Icons.favorite_rounded,
+            color: AshaColors.coral,
+            size: 36,
+          ),
+
+          const SizedBox(height: 10),
+
+          const Text(
+            'Your prediction is unavailable',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AshaColors.ink,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
             ),
-            const SizedBox(height: 12),
-            const Text(
-              'We could not load your personalized cycle prediction from the ML server.',
+          ),
+
+          const SizedBox(height: 6),
+
+          const Text(
+            'We could not load your personalized cycle\n'
+            'prediction from the ML server.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AshaColors.slate,
+              fontSize: 11,
+              height: 1.4,
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          ElevatedButton(
+            onPressed: () => _loadHomeData(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AshaColors.coral,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 11,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: const Text(
+              'Try Again',
               style: TextStyle(
-                color: AshaColors.slate,
-                fontSize: 13,
-                height: 1.45,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  _loadHomeData();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AshaColors.coral,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 13,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                child: const Text(
-                  'Try Again',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
     final progress =
         prediction.cycleProgress.clamp(0.0, 1.0);
 
-    return AshaCard(
-      tint: Colors.white,
-      child: Column(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 112,
-                height: 112,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox(
-                      width: 112,
-                      height: 112,
-                      child: CircularProgressIndicator(
-                        value: progress,
-                        strokeWidth: 9,
-                        backgroundColor: AshaColors.peach,
-                        valueColor:
-                            const AlwaysStoppedAnimation<Color>(
-                          AshaColors.coral,
-                        ),
-                      ),
-                    ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '${prediction.currentDay}',
-                          style: const TextStyle(
-                            color: AshaColors.ink,
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const Text(
-                          'cycle day',
-                          style: TextStyle(
-                            color: AshaColors.slate,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+    final confidencePercent =
+        prediction.confidence.round();
+
+    return Center(
+      child: SizedBox(
+        width: 158,
+        height: 158,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+
+            // ==================================================
+            // OUTER CIRCLE
+            // ==================================================
+
+            SizedBox(
+              width: 158,
+              height: 158,
+              child: CircularProgressIndicator(
+                value: progress,
+                strokeWidth: 10,
+                backgroundColor: AshaColors.peach,
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(
+                  AshaColors.coral,
                 ),
               ),
-              const SizedBox(width: 18),
-              Expanded(
-                child: Column(
+            ),
+
+            // ==================================================
+            // CENTER CONTENT
+            // ==================================================
+
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+
+                // DAY 2 — SAME LINE
+                Row(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
                   children: [
                     const Text(
-                      'Your cycle',
+                      'DAY ',
                       style: TextStyle(
-                        color: AshaColors.slate,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      prediction.phaseLabel,
-                      style: const TextStyle(
                         color: AshaColors.ink,
-                        fontSize: 20,
+                        fontSize: 17,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 8),
+
                     Text(
-                      '${prediction.avgCycleLength}-day average cycle',
+                      '${prediction.currentDay}',
                       style: const TextStyle(
-                        color: AshaColors.slate,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${prediction.avgPeriodLength}-day period',
-                      style: const TextStyle(
-                        color: AshaColors.slate,
-                        fontSize: 12,
+                        color: AshaColors.ink,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              backgroundColor: AshaColors.peach,
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(
-                AshaColors.coral,
-              ),
+
+                const SizedBox(height: 3),
+
+                // PHASE
+                Text(
+                  prediction.phaseLabel,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AshaColors.slate,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+
+                const SizedBox(height: 7),
+
+                GestureDetector(
+  onTap: () {
+    openScreen(
+      const WhyPredictionScreen(),
+    );
+  },
+  child: Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: 10,
+      vertical: 5,
+    ),
+    decoration: BoxDecoration(
+      color: AshaColors.coral,
+      borderRadius: BorderRadius.circular(15),
+    ),
+    child: Text(
+      'AI confidence $confidencePercent%',
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 9,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  ),
+),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Text(
-                'Cycle progress',
-                style: TextStyle(
-                  color: AshaColors.slate,
-                  fontSize: 11,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${(progress * 100).round()}%',
-                style: const TextStyle(
-                  color: AshaColors.coral,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -619,444 +570,204 @@ class _HomeScreenState extends State<HomeScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+
+        // ======================================================
+        // NEXT PERIOD
+        // ======================================================
+
         Expanded(
-          child: _buildInfoCard(
-            icon: Icons.calendar_month_rounded,
-            title: 'Next period',
+          child: _buildPredictionPill(
+            icon: Icons.water_drop_rounded,
+            iconColor: _mintIcon,
+            label: 'NEXT PERIOD',
             value: prediction.nextPeriodLabel.isEmpty
                 ? 'Not available'
                 : prediction.nextPeriodLabel,
-            subtitle: 'Based on your ML prediction',
-            tint: AshaColors.peach,
+            tint: _mint,
           ),
         ),
-        const SizedBox(width: 12),
+
+        const SizedBox(width: 8),
+
+        // ======================================================
+        // FERTILE WINDOW
+        // ======================================================
+
         Expanded(
-          child: _buildInfoCard(
-            icon: Icons.spa_rounded,
-            title: 'Fertile window',
+          child: _buildPredictionPill(
+            icon: Icons.eco_rounded,
+            iconColor: _skyBlueIcon,
+            label: 'FERTILE WINDOW',
             value: prediction.fertileWindowLabel.isEmpty
                 ? 'Not available'
                 : prediction.fertileWindowLabel,
-            subtitle: 'Estimated fertile days',
-            tint: AshaColors.lavender,
+            tint: _skyBlue,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildInfoCard({
+  Widget _buildPredictionPill({
     required IconData icon,
-    required String title,
+    required Color iconColor,
+    required String label,
     required String value,
-    required String subtitle,
     required Color tint,
   }) {
     return Container(
-      padding: const EdgeInsets.all(15),
+      height: 48,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 9,
+        vertical: 7,
+      ),
       decoration: BoxDecoration(
         color: tint,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(11),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(
-                alpha: 0.75,
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              icon,
-              color: AshaColors.coral,
-              size: 20,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            style: const TextStyle(
-              color: AshaColors.slate,
-              fontSize: 11,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AshaColors.ink,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            subtitle,
-            style: const TextStyle(
-              color: AshaColors.slate,
-              fontSize: 10,
-              height: 1.3,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  // ============================================================
-  // QUICK ACTIONS
-  // ============================================================
-
-  Widget _buildQuickActions() {
-    return AshaCard(
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Quick actions',
-            style: TextStyle(
-              color: AshaColors.ink,
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(
-                child: _buildQuickAction(
-                  icon: Icons.edit_calendar_rounded,
-                  label: 'Log symptoms',
-                  onTap: () {
-                    openScreen(
-                      const QuickLogScreen(),
-                    );
-                  },
-                ),
+              Icon(
+                icon,
+                color: iconColor,
+                size: 12,
               ),
-              const SizedBox(width: 10),
+
+              const SizedBox(width: 3),
+
               Expanded(
-                child: _buildQuickAction(
-                  icon: Icons.water_drop_outlined,
-                  label: 'Discharge',
-                  onTap: () {
-                    openScreen(
-                      const DischargeTrackerScreen(),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildQuickAction(
-                  icon: Icons.local_library_outlined,
-                  label: 'Health library',
-                  onTap: () {
-                    openScreen(
-                      const LibraryScreen(),
-                    );
-                  },
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AshaColors.ink,
+                    fontSize: 7.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
                 ),
               ),
             ],
           ),
+
+          const SizedBox(height: 2),
+
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AshaColors.ink,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildQuickAction({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          vertical: 13,
-          horizontal: 5,
-        ),
-        decoration: BoxDecoration(
-          color: AshaColors.peach,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              color: AshaColors.coral,
-              size: 25,
+  // ============================================================
+  // ACTION BUTTONS
+  // ============================================================
+
+  Widget _buildActionButtons() {
+    return Column(
+      children: [
+
+        // ======================================================
+        // LOG DISCHARGE
+        // ======================================================
+
+        SizedBox(
+          width: double.infinity,
+          height: 37,
+          child: ElevatedButton.icon(
+            onPressed: () {
+              openScreen(
+                const DischargeTrackerScreen(),
+              );
+            },
+
+            icon: const Icon(
+              Icons.water_drop_outlined,
+              color: AshaColors.ink,
+              size: 14,
             ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              style: const TextStyle(
+
+            label: const Text(
+              'Log discharge',
+              style: TextStyle(
                 color: AshaColors.ink,
-                fontSize: 11,
                 fontWeight: FontWeight.w600,
+                fontSize: 10,
               ),
             ),
-          ],
+
+            style: ElevatedButton.styleFrom(
+              backgroundColor:
+                  const Color(0xFFF3D9A0),
+              elevation: 0,
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(22),
+              ),
+            ),
+          ),
         ),
-      ),
-    );
-  }
 
-  // ============================================================
-  // HEALTH INSIGHT
-  // ============================================================
+        const SizedBox(height: 8),
 
-  Widget _buildHealthInsight() {
-    final prediction = _prediction;
+        // ======================================================
+        // FIND DOCTOR
+        // ======================================================
 
-    if (prediction == null) {
-      return AshaCard(
-        tint: AshaColors.lavender,
-        child: Row(
-          children: [
-            Container(
-              width: 45,
-              height: 45,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.favorite_outline_rounded,
-                color: AshaColors.coral,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'Your personalized health insights will appear here after your prediction loads.',
-                style: TextStyle(
-                  color: AshaColors.ink,
-                  fontSize: 12,
-                  height: 1.4,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final hasPcos =
-        prediction.pcosRisk == 'Reported PCOS';
-
-    return AshaCard(
-      tint: AshaColors.lavender,
-      child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 45,
-            height: 45,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              hasPcos
-                  ? Icons.health_and_safety_outlined
-                  : Icons.favorite_outline_rounded,
-              color: AshaColors.coral,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Health insight',
-                  style: TextStyle(
-                    color: AshaColors.ink,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  hasPcos
-                      ? 'Your profile shows reported PCOS. Keep tracking your symptoms and cycle patterns.'
-                      : 'Your current profile shows no reported PCOS. Continue tracking your cycle and symptoms regularly.',
-                  style: const TextStyle(
-                    color: AshaColors.slate,
-                    fontSize: 12,
-                    height: 1.45,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================
-  // DOCTOR CARD
-  // ============================================================
-
-  Widget _buildDoctorCard() {
-    return AshaCard(
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: AshaColors.peach,
-              borderRadius:
-                  BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons.local_hospital_outlined,
-              color: AshaColors.coral,
-              size: 27,
-            ),
-          ),
-          const SizedBox(width: 13),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Need professional help?',
-                  style: TextStyle(
-                    color: AshaColors.ink,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Find nearby doctors and clinics.',
-                  style: TextStyle(
-                    color: AshaColors.slate,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
+        SizedBox(
+          width: double.infinity,
+          height: 37,
+          child: OutlinedButton.icon(
             onPressed: () {
               openScreen(
                 const FindDoctorScreen(),
               );
             },
+
             icon: const Icon(
-              Icons.arrow_forward_ios_rounded,
-              color: AshaColors.coral,
-              size: 17,
+              Icons.search_rounded,
+              color: AshaColors.slate,
+              size: 14,
+            ),
+
+            label: const Text(
+              'Find a doctor nearby',
+              style: TextStyle(
+                color: AshaColors.slate,
+                fontWeight: FontWeight.w600,
+                fontSize: 10,
+              ),
+            ),
+
+            style: OutlinedButton.styleFrom(
+              backgroundColor: Colors.white,
+              side: const BorderSide(
+                color: AshaColors.peachDark,
+              ),
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(22),
+              ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================
-  // ASHA CARD
-  // ============================================================
-
-  Widget _buildAshaCard() {
-    return const AshaCard(
-      tint: AshaColors.peach,
-      child: Row(
-        children: [
-          AshaMascot(
-            size: 58,
-          ),
-          SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Talk to Asha',
-                  style: TextStyle(
-                    color: AshaColors.ink,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                SizedBox(height: 5),
-                Text(
-                  'Have a question about your menstrual health?',
-                  style: TextStyle(
-                    color: AshaColors.slate,
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(
-            Icons.chat_bubble_outline_rounded,
-            color: AshaColors.coral,
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================
-  // WHY PREDICTION
-  // ============================================================
-
-  Widget _buildPredictionInfoButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () {
-          openScreen(
-            const WhyPredictionScreen(),
-          );
-        },
-        icon: const Icon(
-          Icons.info_outline_rounded,
-          size: 18,
         ),
-        label: const Text(
-          'How is my prediction calculated?',
-        ),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AshaColors.coral,
-          side: const BorderSide(
-            color: AshaColors.peachDark,
-          ),
-          padding: const EdgeInsets.symmetric(
-            vertical: 13,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(15),
-          ),
-        ),
-      ),
+      ],
     );
   }
 }
-
