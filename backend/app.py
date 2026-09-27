@@ -1,3 +1,7 @@
+# ============================================================
+# ASHA BACKEND
+# ============================================================
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -15,7 +19,9 @@ from datetime import datetime, timedelta
 # BASE DIRECTORY + ENVIRONMENT
 # ============================================================
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(
+    os.path.abspath(__file__)
+)
 
 load_dotenv(
     os.path.join(BASE_DIR, ".env")
@@ -27,6 +33,7 @@ load_dotenv(
 # ============================================================
 
 app = Flask(__name__)
+
 CORS(app)
 
 
@@ -50,15 +57,21 @@ GOOGLE_MAPS_API_KEY = os.environ.get(
 client = None
 
 if OPENROUTER_API_KEY:
+
     client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=OPENROUTER_API_KEY,
     )
 
-    print("OpenRouter client initialized successfully.")
+    print(
+        "OpenRouter client initialized successfully."
+    )
 
 else:
-    print("WARNING: OPENROUTER_API_KEY not found.")
+
+    print(
+        "WARNING: OPENROUTER_API_KEY not found."
+    )
 
 
 # ============================================================
@@ -79,45 +92,53 @@ AI_FALLBACK_MODELS = [
 # ============================================================
 
 SYSTEM_PROMPT = (
-    "You are Asha, a warm and supportive women's menstrual "
-    "wellness companion. "
 
-    "You help users understand menstruation, menstrual cycles, "
-    "periods, ovulation, PMS, common menstrual symptoms, "
-    "reproductive wellness, self-care, and general women's "
-    "health education. "
+    "You are Asha, a warm and supportive women's "
+    "menstrual wellness companion. "
+
+    "You help users understand menstruation, menstrual "
+    "cycles, periods, ovulation, PMS, common menstrual "
+    "symptoms, reproductive wellness, self-care, and "
+    "general women's health education. "
 
     "Respond naturally and conversationally. "
 
-    "Use conversation history to understand what the user means. "
+    "Use conversation history to understand what the "
+    "user means. "
 
-    "IMPORTANT: Return ONLY the final answer intended for the user. "
-    "Do not reveal internal reasoning, chain-of-thought, hidden "
-    "thoughts, analysis, deliberation, planning, or reasoning steps. "
-    "Do not use <think> tags. Do not write sections such as "
-    "'Thinking', 'Reasoning', or 'Analysis'. "
+    "IMPORTANT: Return ONLY the final answer intended "
+    "for the user. Do not reveal internal reasoning, "
+    "chain-of-thought, hidden thoughts, analysis, "
+    "deliberation, planning, or reasoning steps. "
 
-    "You are not a doctor and must never diagnose a medical "
-    "condition. "
+    "Do not use <think> tags. "
+
+    "Do not write sections such as 'Thinking', "
+    "'Reasoning', or 'Analysis'. "
+
+    "You are not a doctor and must never diagnose a "
+    "medical condition. "
 
     "Do not claim certainty about a user's health. "
 
     "Give general educational and wellness information. "
 
-    "If the user describes severe, persistent, unusual, or "
-    "potentially dangerous symptoms, recommend consulting "
-    "a qualified healthcare professional. "
+    "If the user describes severe, persistent, unusual, "
+    "or potentially dangerous symptoms, recommend "
+    "consulting a qualified healthcare professional. "
 
-    "Do not prescribe medication or provide medication dosages. "
+    "Do not prescribe medication or provide medication "
+    "dosages. "
 
     "Be warm, empathetic, clear, and easy to understand. "
 
-    "Keep answers reasonably short unless the user asks for "
-    "more detail. "
+    "Keep answers reasonably short unless the user asks "
+    "for more detail. "
 
-    "If a question is completely unrelated to women's health, "
-    "politely explain that Asha is primarily designed for "
-    "women's menstrual and wellness questions."
+    "If a question is completely unrelated to women's "
+    "health, politely explain that Asha is primarily "
+    "designed for women's menstrual and wellness "
+    "questions."
 )
 
 
@@ -131,11 +152,17 @@ MODEL_PATH = os.path.join(
 )
 
 try:
-    model = joblib.load(MODEL_PATH)
 
-    print("ML model loaded successfully.")
+    model = joblib.load(
+        MODEL_PATH
+    )
+
+    print(
+        "ML model loaded successfully."
+    )
 
 except Exception as e:
+
     model = None
 
     print(
@@ -149,15 +176,25 @@ except Exception as e:
 # ============================================================
 
 FEATURE_ORDER = [
+
     "Cycle Length",
+
     "Period Length",
+
     "Age",
+
     "BMI",
+
     "Stress Level",
+
     "Exercise Frequency",
+
     "Sleep Hours",
+
     "Diet",
+
     "PCOS",
+
 ]
 
 
@@ -178,10 +215,18 @@ GOOGLE_GEOCODING_URL = (
 )
 
 
+# ============================================================
+# GOOGLE KEY STATUS
+# ============================================================
+
 if GOOGLE_MAPS_API_KEY:
-    print("Google Maps server API key loaded.")
+
+    print(
+        "Google Maps server API key loaded."
+    )
 
 else:
+
     print(
         "WARNING: GOOGLE_MAPS_API_KEY not found."
     )
@@ -191,88 +236,151 @@ else:
 # HELPER FUNCTIONS
 # ============================================================
 
-def get_number(data, key, default=None):
-    value = data.get(key, default)
+def get_number(
+    data,
+    key,
+    default=None
+):
+
+    value = data.get(
+        key,
+        default
+    )
 
     if value is None:
         return default
 
     try:
+
         return float(value)
 
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError
+    ):
+
         return default
 
 
-def get_int(data, key, default=None):
-    value = data.get(key, default)
+def get_int(
+    data,
+    key,
+    default=None
+):
+
+    value = data.get(
+        key,
+        default
+    )
 
     if value is None:
         return default
 
     try:
-        return int(float(value))
 
-    except (TypeError, ValueError):
+        return int(
+            float(value)
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
         return default
 
 
 def encode_exercise(value):
+
     if value is None:
         return None
 
-    if isinstance(value, (int, float)):
+    if isinstance(
+        value,
+        (int, float)
+    ):
+
         return int(value)
 
-    value = str(value).strip().lower()
+    value = str(
+        value
+    ).strip().lower()
 
     mapping = {
+
         "low": 0,
+
         "moderate": 1,
+
         "high": 2,
+
     }
 
-    return mapping.get(value)
+    return mapping.get(
+        value
+    )
 
 
 def encode_diet(value):
+
     if value is None:
         return None
 
-    if isinstance(value, (int, float)):
+    if isinstance(
+        value,
+        (int, float)
+    ):
+
         return int(value)
 
-    value = str(value).strip().lower()
+    value = str(
+        value
+    ).strip().lower()
 
     mapping = {
+
         "low carb": 0,
+
         "balanced": 1,
+
         "vegetarian": 2,
+
         "high protein": 3,
+
     }
 
-    return mapping.get(value)
+    return mapping.get(
+        value
+    )
 
 
 def is_valid_date_string(value):
+
     if not value:
         return False
 
     try:
+
         datetime.fromisoformat(
-            str(value).replace("Z", "+00:00")
+            str(value).replace(
+                "Z",
+                "+00:00"
+            )
         )
 
         return True
 
     except Exception:
+
         return False
 
 
 def get_model_feature_importance():
+
     importance = {}
 
     try:
+
         if model is None:
             return importance
 
@@ -285,23 +393,32 @@ def get_model_feature_importance():
         if values is None:
             return importance
 
-        if len(values) != len(FEATURE_ORDER):
+        if len(values) != len(
+            FEATURE_ORDER
+        ):
+
             print(
-                "Feature importance length does not match "
-                "FEATURE_ORDER."
+                "Feature importance length does not "
+                "match FEATURE_ORDER."
             )
 
             return importance
 
-        for index, feature in enumerate(FEATURE_ORDER):
+        for index, feature in enumerate(
+            FEATURE_ORDER
+        ):
+
             importance[feature] = round(
-                float(values[index]),
+                float(
+                    values[index]
+                ),
                 4
             )
 
         return importance
 
     except Exception as e:
+
         print(
             "Error getting feature importance:",
             e
@@ -310,59 +427,110 @@ def get_model_feature_importance():
         return importance
 
 
-def google_headers(field_mask):
+def google_headers(
+    field_mask
+):
+
     return {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
-        "X-Goog-FieldMask": field_mask,
+
+        "Content-Type":
+            "application/json",
+
+        "X-Goog-Api-Key":
+            GOOGLE_MAPS_API_KEY,
+
+        "X-Goog-FieldMask":
+            field_mask,
+
     }
 
 
-def google_error_message(response):
+def google_error_message(
+    response
+):
+
     try:
+
         data = response.json()
 
-        error = data.get("error", {})
+        error = data.get(
+            "error",
+            {}
+        )
 
-        if isinstance(error, dict):
-            message = error.get("message")
+        if isinstance(
+            error,
+            dict
+        ):
+
+            message = error.get(
+                "message"
+            )
 
             if message:
                 return message
 
-        return str(data)
+        return str(
+            data
+        )
 
     except Exception:
-        return response.text or "Unknown Google API error."
+
+        return (
+            response.text
+            or
+            "Unknown Google API error."
+        )
 
 
-def normalize_place_type(place):
+def normalize_place_type(
+    place
+):
+
     primary_type = str(
-        place.get("primaryType", "")
+        place.get(
+            "primaryType",
+            ""
+        )
     ).lower()
 
     types = [
+
         str(item).lower()
-        for item in place.get("types", [])
+
+        for item in place.get(
+            "types",
+            []
+        )
+
     ]
 
-    all_types = set(types)
+    all_types = set(
+        types
+    )
 
-    all_types.add(primary_type)
+    all_types.add(
+        primary_type
+    )
 
     if (
         "hospital" in all_types
-        or "general_hospital" in all_types
+        or
+        "general_hospital" in all_types
     ):
+
         return "hospital"
 
     if (
         "medical_center" in all_types
-        or "medical_clinic" in all_types
+        or
+        "medical_clinic" in all_types
     ):
+
         return "clinic"
 
     if "doctor" in all_types:
+
         return "doctor"
 
     return "clinic"
@@ -372,11 +540,20 @@ def normalize_place_type(place):
 # ROOT
 # ============================================================
 
-@app.route("/", methods=["GET"])
+@app.route(
+    "/",
+    methods=["GET"]
+)
 def root():
+
     return jsonify({
-        "status": "success",
-        "message": "Asha backend is running",
+
+        "status":
+            "success",
+
+        "message":
+            "Asha backend is running",
+
     }), 200
 
 
@@ -384,17 +561,30 @@ def root():
 # HEALTH CHECK
 # ============================================================
 
-@app.route("/health", methods=["GET"])
+@app.route(
+    "/health",
+    methods=["GET"]
+)
 def health():
+
     return jsonify({
-        "status": "healthy",
-        "model_loaded": model is not None,
-        "google_maps_configured": (
-            GOOGLE_MAPS_API_KEY is not None
-        ),
-        "openrouter_configured": (
-            OPENROUTER_API_KEY is not None
-        ),
+
+        "status":
+            "healthy",
+
+        "model_loaded":
+            model is not None,
+
+        "google_maps_configured":
+            bool(
+                GOOGLE_MAPS_API_KEY
+            ),
+
+        "openrouter_configured":
+            bool(
+                OPENROUTER_API_KEY
+            ),
+
     }), 200
 
 
@@ -402,41 +592,87 @@ def health():
 # PREDICTION ENDPOINT
 # ============================================================
 
-@app.route("/predict/<user_id>", methods=["POST"])
+@app.route(
+    "/predict/<user_id>",
+    methods=["POST"]
+)
 def predict(user_id):
+
     try:
-        data = request.get_json(silent=True)
+
+        data = request.get_json(
+            silent=True
+        )
 
         if not data:
+
             return jsonify({
-                "status": "error",
-                "message": "No user health profile data received.",
-                "error": "incomplete_profile"
+
+                "status":
+                    "error",
+
+                "message":
+                    "No user health profile data received.",
+
+                "error":
+                    "incomplete_profile"
+
             }), 400
+
+
+        # ----------------------------------------------------
+        # REQUIRED USER DATA
+        # ----------------------------------------------------
 
         required_fields = [
+
             "age",
+
             "cycle_length",
+
             "period_length",
+
             "bmi",
+
             "last_period_date",
+
         ]
+
 
         missing = [
+
             field
+
             for field in required_fields
+
             if data.get(field) is None
+
         ]
 
+
         if missing:
+
             return jsonify({
-                "status": "error",
-                "message": "Required health profile data is missing.",
-                "error": "incomplete_profile",
-                "missing_fields": missing
+
+                "status":
+                    "error",
+
+                "message":
+                    "Required health profile data is missing.",
+
+                "error":
+                    "incomplete_profile",
+
+                "missing_fields":
+                    missing
+
             }), 400
 
-        # User's actual saved profile data
+
+        # ----------------------------------------------------
+        # USER'S ACTUAL SAVED PROFILE DATA
+        # ----------------------------------------------------
+
         cycle_length = get_int(
             data,
             "cycle_length"
@@ -458,89 +694,247 @@ def predict(user_id):
         )
 
         stress_level = get_int(
+
             data,
+
             "stress_level",
-            data.get("stress", 3)
+
+            data.get(
+                "stress",
+                3
+            )
+
         )
 
         exercise_frequency = get_int(
+
             data,
+
             "exercise_frequency",
+
             1
+
         )
 
         sleep_hours = get_number(
+
             data,
+
             "sleep_hours",
+
             7
+
         )
 
         diet = data.get(
+
             "diet",
+
             "Low Carb"
+
         )
 
         pcos = get_int(
+
             data,
+
             "pcos",
+
             0
+
         )
 
         last_period_date = data.get(
+
             "last_period_date"
+
         )
 
+
         # ----------------------------------------------------
-        # ML FEATURES
+        # VALIDATE MODEL
+        # ----------------------------------------------------
+
+        if model is None:
+
+            return jsonify({
+
+                "status":
+                    "error",
+
+                "message":
+                    "ML model is not loaded.",
+
+                "error":
+                    "model_not_loaded"
+
+            }), 500
+
+
+        # ----------------------------------------------------
+        # CREATE ML FEATURES
         # ----------------------------------------------------
 
         features = pd.DataFrame([{
-            "Cycle Length": cycle_length,
-            "Period Length": period_length,
-            "Age": age,
-            "BMI": bmi,
-            "Stress Level": stress_level,
-            "Exercise Frequency": encode_exercise(
-                exercise_frequency
-            ),
-            "Sleep Hours": sleep_hours,
-            "Diet": encode_diet(diet),
-            "PCOS": pcos,
+
+            "Cycle Length":
+                cycle_length,
+
+            "Period Length":
+                period_length,
+
+            "Age":
+                age,
+
+            "BMI":
+                bmi,
+
+            "Stress Level":
+                stress_level,
+
+            "Exercise Frequency":
+                encode_exercise(
+                    exercise_frequency
+                ),
+
+            "Sleep Hours":
+                sleep_hours,
+
+            "Diet":
+                encode_diet(
+                    diet
+                ),
+
+            "PCOS":
+                pcos,
+
         }])
+
+
+        print(
+            "=============================================="
+        )
+
+        print(
+            "PERSONALIZED ML PREDICTION"
+        )
+
+        print(
+            f"User ID: {user_id}"
+        )
+
+        print(
+            f"Cycle Length: {cycle_length}"
+        )
+
+        print(
+            f"Period Length: {period_length}"
+        )
+
+        print(
+            f"Age: {age}"
+        )
+
+        print(
+            f"BMI: {bmi}"
+        )
+
+        print(
+            f"Stress: {stress_level}"
+        )
+
+        print(
+            f"Exercise: {exercise_frequency}"
+        )
+
+        print(
+            f"Sleep: {sleep_hours}"
+        )
+
+        print(
+            f"Diet: {diet}"
+        )
+
+        print(
+            f"PCOS: {pcos}"
+        )
+
+        print(
+            "=============================================="
+        )
+
 
         # ----------------------------------------------------
         # ML PREDICTION
         # ----------------------------------------------------
 
         predicted_days = float(
-            model.predict(features)[0]
+            model.predict(
+                features
+            )[0]
         )
 
         predicted_days = round(
-            max(15, min(45, predicted_days))
+
+            max(
+                15,
+                min(
+                    45,
+                    predicted_days
+                )
+            )
+
         )
+
+
+        # ----------------------------------------------------
+        # DATE CALCULATIONS
+        # ----------------------------------------------------
 
         last_period = datetime.strptime(
+
             last_period_date[:10],
+
             "%Y-%m-%d"
+
         )
+
 
         next_period = (
-            last_period +
-            timedelta(days=predicted_days)
+
+            last_period
+            +
+            timedelta(
+                days=predicted_days
+            )
+
         )
+
 
         ovulation_date = (
-            next_period -
-            timedelta(days=14)
+
+            next_period
+            -
+            timedelta(
+                days=14
+            )
+
         )
+
 
         fertile_start = (
-            ovulation_date -
-            timedelta(days=5)
+
+            ovulation_date
+            -
+            timedelta(
+                days=5
+            )
+
         )
 
+
         fertile_end = ovulation_date
+
 
         # ----------------------------------------------------
         # CONFIDENCE
@@ -548,22 +942,37 @@ def predict(user_id):
 
         confidence = 87.0
 
-        if hasattr(model, "predict_proba"):
+
+        if hasattr(
+            model,
+            "predict_proba"
+        ):
+
             try:
+
                 probabilities = model.predict_proba(
                     features
                 )
 
                 if probabilities is not None:
+
                     confidence = round(
+
                         float(
-                            max(probabilities[0])
+                            max(
+                                probabilities[0]
+                            )
                             * 100
                         ),
+
                         1
+
                     )
+
             except Exception:
+
                 confidence = 87.0
+
 
         # ----------------------------------------------------
         # CURRENT CYCLE DAY
@@ -571,96 +980,153 @@ def predict(user_id):
 
         today = datetime.now().date()
 
+
         current_day = (
-            today -
+
+            today
+            -
             last_period.date()
         ).days + 1
 
+
         if current_day < 1:
+
             current_day = 1
+
 
         # ----------------------------------------------------
         # PHASE
         # ----------------------------------------------------
 
         ovulation_day = (
-            predicted_days - 14
+
+            predicted_days
+            -
+            14
+
         )
 
+
         if current_day <= period_length:
+
             phase = "Menstrual"
 
         elif current_day < ovulation_day:
+
             phase = "Follicular"
 
-        elif current_day <= ovulation_day + 1:
+        elif current_day <= (
+            ovulation_day + 1
+        ):
+
             phase = "Ovulation"
 
         else:
+
             phase = "Luteal"
+
 
         # ----------------------------------------------------
         # RESPONSE
         # ----------------------------------------------------
 
         return jsonify({
-            "status": "success",
 
-            "prediction": predicted_days,
+            "status":
+                "success",
+
+            "prediction":
+                predicted_days,
 
             "predicted_cycle_length":
                 predicted_days,
 
             "next_period":
-                next_period.strftime("%Y-%m-%d"),
+                next_period.strftime(
+                    "%Y-%m-%d"
+                ),
 
             "next_period_label":
-                next_period.strftime("%d %B %Y"),
+                next_period.strftime(
+                    "%d %B %Y"
+                ),
 
             "ovulation_date":
-                ovulation_date.strftime("%Y-%m-%d"),
+                ovulation_date.strftime(
+                    "%Y-%m-%d"
+                ),
 
             "fertile_window": {
+
                 "start":
-                    fertile_start.strftime("%Y-%m-%d"),
+                    fertile_start.strftime(
+                        "%Y-%m-%d"
+                    ),
+
                 "end":
-                    fertile_end.strftime("%Y-%m-%d"),
+                    fertile_end.strftime(
+                        "%Y-%m-%d"
+                    ),
+
             },
 
             "fertile_window_start":
-                fertile_start.strftime("%Y-%m-%d"),
+                fertile_start.strftime(
+                    "%Y-%m-%d"
+                ),
 
             "fertile_window_end":
-                fertile_end.strftime("%Y-%m-%d"),
+                fertile_end.strftime(
+                    "%Y-%m-%d"
+                ),
 
             "fertile_window_label":
+
                 f"{fertile_start.strftime('%d %b')} - "
                 f"{fertile_end.strftime('%d %b')}",
 
-            "confidence": confidence,
+            "confidence":
+                confidence,
 
-            "ai_confidence": confidence,
+            "ai_confidence":
+                confidence,
 
-            "current_day": current_day,
+            "current_day":
+                current_day,
 
             "cycle_day_at_prediction":
                 current_day,
 
-            "phase_label": phase,
+            "phase_label":
+                phase,
 
-            "cycle_progress": round(
-                (
-                    current_day /
-                    max(predicted_days, 1)
-                ) * 100,
-                1
-            ),
+            "cycle_progress":
+                round(
+
+                    (
+                        current_day
+                        /
+                        max(
+                            predicted_days,
+                            1
+                        )
+                    )
+                    *
+                    100,
+
+                    1
+
+                ),
 
             "factor_weights":
                 get_model_feature_importance(),
 
             "pcos_risk":
-                "Higher" if pcos == 1 else "Normal",
+
+                "Higher"
+                if pcos == 1
+                else
+                "Normal",
 
             "avg_cycle_length":
                 cycle_length,
@@ -673,18 +1139,28 @@ def predict(user_id):
                     "period_history",
                     []
                 ),
-        })
+
+        }), 200
+
 
     except Exception as e:
+
         print(
             "PREDICTION ERROR:",
             str(e)
         )
 
         return jsonify({
-            "status": "error",
-            "message": str(e),
-            "error": "prediction_failed"
+
+            "status":
+                "error",
+
+            "message":
+                str(e),
+
+            "error":
+                "prediction_failed"
+
         }), 500
 
 
@@ -694,79 +1170,227 @@ def predict(user_id):
 
 @app.route(
     "/find-doctors",
-    methods=["POST"]
+    methods=["GET", "POST"]
 )
 def find_doctors():
 
     try:
 
+        # ----------------------------------------------------
+        # CHECK GOOGLE SERVER API KEY
+        # ----------------------------------------------------
+
         if not GOOGLE_MAPS_API_KEY:
+
+            print(
+                "ERROR: GOOGLE_MAPS_API_KEY is not configured."
+            )
+
             return jsonify({
-                "success": False,
-                "error": (
-                    "GOOGLE_MAPS_API_KEY is not configured "
-                    "on the server."
-                ),
-                "facilities": [],
+
+                "success":
+                    False,
+
+                "error":
+                    (
+                        "GOOGLE_MAPS_API_KEY is not configured "
+                        "on the server."
+                    ),
+
+                "facilities":
+                    [],
+
             }), 500
 
-        data = request.get_json(
-            silent=True
-        ) or {}
 
         # ----------------------------------------------------
-        # ACCEPT BOTH POSSIBLE FLUTTER FIELD NAMES
+        # READ LOCATION DATA
+        #
+        # GET:
+        # /find-doctors?lat=19.07&lng=72.87&radius=5000
+        #
+        # POST:
+        # {"latitude": ..., "longitude": ..., "radius": ...}
         # ----------------------------------------------------
 
-        latitude = data.get("latitude")
+        if request.method == "GET":
 
-        if latitude is None:
-            latitude = data.get("lat")
+            latitude = request.args.get(
+                "lat",
+                type=float
+            )
 
-        longitude = data.get("longitude")
+            longitude = request.args.get(
+                "lng",
+                type=float
+            )
 
-        if longitude is None:
-            longitude = data.get("lng")
+            radius = request.args.get(
 
-        if latitude is None or longitude is None:
+                "radius",
+
+                default=5000,
+
+                type=float
+
+            )
+
+        else:
+
+            data = request.get_json(
+                silent=True
+            ) or {}
+
+
+            latitude = data.get(
+                "latitude"
+            )
+
+            if latitude is None:
+
+                latitude = data.get(
+                    "lat"
+                )
+
+
+            longitude = data.get(
+                "longitude"
+            )
+
+            if longitude is None:
+
+                longitude = data.get(
+                    "lng"
+                )
+
+
+            radius = data.get(
+                "radius",
+                5000
+            )
+
+
+            try:
+
+                latitude = float(
+                    latitude
+                )
+
+                longitude = float(
+                    longitude
+                )
+
+                radius = float(
+                    radius
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                return jsonify({
+
+                    "success":
+                        False,
+
+                    "error":
+                        (
+                            "Invalid latitude, longitude, "
+                            "or radius."
+                        ),
+
+                    "facilities":
+                        [],
+
+                }), 400
+
+
+        # ----------------------------------------------------
+        # VALIDATE LOCATION
+        # ----------------------------------------------------
+
+        if (
+            latitude is None
+            or
+            longitude is None
+        ):
+
+            print(
+                "ERROR: Latitude or longitude missing."
+            )
+
             return jsonify({
-                "success": False,
-                "error": (
-                    "Latitude and longitude are required."
-                ),
-                "facilities": [],
+
+                "success":
+                    False,
+
+                "error":
+                    (
+                        "Latitude and longitude are required."
+                    ),
+
+                "facilities":
+                    [],
+
             }), 400
 
-        try:
-            latitude = float(latitude)
-            longitude = float(longitude)
 
-        except (TypeError, ValueError):
+        try:
+
+            latitude = float(
+                latitude
+            )
+
+            longitude = float(
+                longitude
+            )
+
+            radius = float(
+                radius
+            )
+
+        except (
+            TypeError,
+            ValueError
+        ):
 
             return jsonify({
-                "success": False,
-                "error": "Invalid latitude or longitude.",
-                "facilities": [],
+
+                "success":
+                    False,
+
+                "error":
+                    (
+                        "Invalid latitude, longitude, "
+                        "or radius."
+                    ),
+
+                "facilities":
+                    [],
+
             }), 400
 
-        radius = data.get(
-            "radius",
-            5000
-        )
 
-        try:
-            radius = float(radius)
-
-        except (TypeError, ValueError):
-            radius = 5000
+        # ----------------------------------------------------
+        # LIMIT SEARCH RADIUS
+        # ----------------------------------------------------
 
         radius = max(
+
             100,
+
             min(
                 radius,
                 50000
             )
+
         )
+
+
+        # ----------------------------------------------------
+        # LOG REQUEST
+        # ----------------------------------------------------
 
         print(
             "=============================================="
@@ -774,6 +1398,10 @@ def find_doctors():
 
         print(
             "GOOGLE PLACES DOCTOR FINDER"
+        )
+
+        print(
+            f"Request method: {request.method}"
         )
 
         print(
@@ -789,60 +1417,116 @@ def find_doctors():
         )
 
         print(
+            "Google API key configured:",
+            bool(
+                GOOGLE_MAPS_API_KEY
+            )
+        )
+
+        print(
             "=============================================="
         )
 
+
         # ----------------------------------------------------
-        # GOOGLE NEARBY SEARCH REQUEST
+        # GOOGLE PLACES NEARBY SEARCH
         # ----------------------------------------------------
 
         payload = {
 
             "includedTypes": [
+
                 "doctor",
+
                 "hospital",
+
                 "general_hospital",
+
                 "medical_center",
+
                 "medical_clinic",
+
             ],
 
-            "maxResultCount": 20,
+            "maxResultCount":
+                20,
 
-            "rankPreference": "DISTANCE",
+            "rankPreference":
+                "DISTANCE",
 
             "locationRestriction": {
+
                 "circle": {
+
                     "center": {
-                        "latitude": latitude,
-                        "longitude": longitude,
+
+                        "latitude":
+                            latitude,
+
+                        "longitude":
+                            longitude,
+
                     },
-                    "radius": radius,
+
+                    "radius":
+                        radius,
+
                 }
+
             },
+
         }
 
+
+        # ----------------------------------------------------
+        # GOOGLE FIELD MASK
+        # ----------------------------------------------------
+
         field_mask = (
+
             "places.id,"
+
             "places.displayName,"
+
             "places.formattedAddress,"
+
             "places.location,"
+
             "places.primaryType,"
+
             "places.types,"
+
             "places.rating,"
+
             "places.currentOpeningHours.openNow"
+
         )
+
+
+        # ----------------------------------------------------
+        # CALL GOOGLE PLACES API
+        # ----------------------------------------------------
 
         response = requests.post(
+
             GOOGLE_PLACES_NEARBY_URL,
+
             json=payload,
-            headers=google_headers(field_mask),
+
+            headers=google_headers(
+                field_mask
+            ),
+
             timeout=20,
+
         )
 
+
         print(
-            "Google Places status:",
+            "Google Places HTTP status:",
             response.status_code
         )
+
 
         # ----------------------------------------------------
         # GOOGLE API ERROR
@@ -855,18 +1539,27 @@ def find_doctors():
             )
 
             print(
-                "Google Places error:",
+                "GOOGLE PLACES ERROR:",
                 message
             )
 
             return jsonify({
-                "success": False,
-                "error": (
-                    "Google Places API error: "
-                    + message
-                ),
-                "facilities": [],
+
+                "success":
+                    False,
+
+                "error":
+                    (
+                        "Google Places API error: "
+                        +
+                        message
+                    ),
+
+                "facilities":
+                    [],
+
             }), response.status_code
+
 
         # ----------------------------------------------------
         # PARSE GOOGLE RESPONSE
@@ -874,12 +1567,24 @@ def find_doctors():
 
         google_data = response.json()
 
+
         places = google_data.get(
             "places",
             []
         )
 
+
+        print(
+            f"Google returned {len(places)} places."
+        )
+
+
         facilities = []
+
+
+        # ----------------------------------------------------
+        # CONVERT GOOGLE PLACES TO ASHA FORMAT
+        # ----------------------------------------------------
 
         for place in places:
 
@@ -888,20 +1593,31 @@ def find_doctors():
                 ""
             )
 
+
             display_name = (
-                place.get("displayName")
+                place.get(
+                    "displayName"
+                )
                 or {}
             )
+
 
             name = (
-                display_name.get("text")
-                or "Healthcare Facility"
+                display_name.get(
+                    "text"
+                )
+                or
+                "Healthcare Facility"
             )
 
+
             location = (
-                place.get("location")
+                place.get(
+                    "location"
+                )
                 or {}
             )
+
 
             facility_lat = location.get(
                 "latitude"
@@ -911,24 +1627,36 @@ def find_doctors():
                 "longitude"
             )
 
+
             if (
                 facility_lat is None
-                or facility_lng is None
+                or
+                facility_lng is None
             ):
+
                 continue
 
+
             address = (
-                place.get("formattedAddress")
-                or ""
+                place.get(
+                    "formattedAddress"
+                )
+                or
+                ""
             )
 
+
             facility_type = (
-                normalize_place_type(place)
+                normalize_place_type(
+                    place
+                )
             )
+
 
             rating = place.get(
                 "rating"
             )
+
 
             current_hours = (
                 place.get(
@@ -937,23 +1665,33 @@ def find_doctors():
                 or {}
             )
 
-            is_open = current_hours.get(
-                "openNow"
+
+            is_open = (
+                current_hours.get(
+                    "openNow"
+                )
             )
+
 
             facilities.append({
 
                 "id":
-                    str(place_id),
+                    str(
+                        place_id
+                    ),
 
                 "name":
                     name,
 
                 "latitude":
-                    float(facility_lat),
+                    float(
+                        facility_lat
+                    ),
 
                 "longitude":
-                    float(facility_lng),
+                    float(
+                        facility_lng
+                    ),
 
                 "address":
                     address,
@@ -966,12 +1704,19 @@ def find_doctors():
 
                 "is_open":
                     is_open,
+
             })
+
+
+        # ----------------------------------------------------
+        # FINAL RESULT
+        # ----------------------------------------------------
 
         print(
             f"Found {len(facilities)} "
             "Google healthcare facilities."
         )
+
 
         return jsonify({
 
@@ -986,15 +1731,36 @@ def find_doctors():
 
         }), 200
 
+
+    # --------------------------------------------------------
+    # GOOGLE TIMEOUT
+    # --------------------------------------------------------
+
     except requests.exceptions.Timeout:
 
+        print(
+            "Google Places request timed out."
+        )
+
         return jsonify({
-            "success": False,
-            "error": (
-                "Google Places request timed out."
-            ),
-            "facilities": [],
+
+            "success":
+                False,
+
+            "error":
+                (
+                    "Google Places request timed out."
+                ),
+
+            "facilities":
+                [],
+
         }), 504
+
+
+    # --------------------------------------------------------
+    # GOOGLE CONNECTION ERROR
+    # --------------------------------------------------------
 
     except requests.exceptions.RequestException as e:
 
@@ -1004,12 +1770,24 @@ def find_doctors():
         )
 
         return jsonify({
-            "success": False,
-            "error": (
-                "Could not connect to Google Places."
-            ),
-            "facilities": [],
+
+            "success":
+                False,
+
+            "error":
+                (
+                    "Could not connect to Google Places."
+                ),
+
+            "facilities":
+                [],
+
         }), 502
+
+
+    # --------------------------------------------------------
+    # GENERAL ERROR
+    # --------------------------------------------------------
 
     except Exception as e:
 
@@ -1019,12 +1797,21 @@ def find_doctors():
         )
 
         return jsonify({
-            "success": False,
-            "error": (
-                "Doctor finder server error."
-            ),
-            "details": str(e),
-            "facilities": [],
+
+            "success":
+                False,
+
+            "error":
+                (
+                    "Doctor finder server error."
+                ),
+
+            "details":
+                str(e),
+
+            "facilities":
+                [],
+
         }), 500
 
 
@@ -1036,46 +1823,84 @@ def find_doctors():
     "/find-doctors/<path:place_id>",
     methods=["GET"]
 )
-def get_doctor_details(place_id):
+def get_doctor_details(
+    place_id
+):
 
     try:
 
         if not GOOGLE_MAPS_API_KEY:
+
             return jsonify({
-                "success": False,
-                "error": (
-                    "GOOGLE_MAPS_API_KEY is not configured."
-                ),
+
+                "success":
+                    False,
+
+                "error":
+                    (
+                        "GOOGLE_MAPS_API_KEY is not configured."
+                    ),
+
             }), 500
 
+
         if not place_id:
+
             return jsonify({
-                "success": False,
-                "error": "Place ID is required.",
+
+                "success":
+                    False,
+
+                "error":
+                    "Place ID is required.",
+
             }), 400
 
+
         url = (
+
             GOOGLE_PLACES_DETAILS_URL
+
             + "/"
+
             + place_id
+
         )
+
 
         field_mask = (
+
             "id,"
+
             "displayName,"
+
             "formattedAddress,"
+
             "nationalPhoneNumber,"
+
             "websiteUri,"
+
             "rating,"
+
             "currentOpeningHours,"
+
             "types"
+
         )
 
+
         response = requests.get(
+
             url,
-            headers=google_headers(field_mask),
+
+            headers=google_headers(
+                field_mask
+            ),
+
             timeout=20,
+
         )
+
 
         if response.status_code != 200:
 
@@ -1089,55 +1914,83 @@ def get_doctor_details(place_id):
             )
 
             return jsonify({
-                "success": False,
-                "error": (
-                    "Google Place Details error: "
-                    + message
-                ),
+
+                "success":
+                    False,
+
+                "error":
+                    (
+                        "Google Place Details error: "
+                        +
+                        message
+                    ),
+
             }), response.status_code
+
 
         place = response.json()
 
+
         display_name = (
-            place.get("displayName")
+
+            place.get(
+                "displayName"
+            )
+
             or {}
+
         )
 
+
         name = (
-            display_name.get("text")
-            or "Healthcare Facility"
+
+            display_name.get(
+                "text"
+            )
+
+            or
+            "Healthcare Facility"
+
         )
+
 
         details = {
 
             "address":
+
                 place.get(
                     "formattedAddress"
                 ),
 
             "phone":
+
                 place.get(
                     "nationalPhoneNumber"
                 ),
 
             "website":
+
                 place.get(
                     "websiteUri"
                 ),
 
             "opening_hours":
+
                 place.get(
                     "currentOpeningHours"
                 ),
 
             "rating":
+
                 place.get(
                     "rating"
                 ),
 
             "reviews":
                 [],
+
         }
+
 
         return jsonify({
 
@@ -1155,14 +2008,21 @@ def get_doctor_details(place_id):
 
         }), 200
 
+
     except requests.exceptions.Timeout:
 
         return jsonify({
-            "success": False,
-            "error": (
-                "Google Place Details request timed out."
-            ),
+
+            "success":
+                False,
+
+            "error":
+                (
+                    "Google Place Details request timed out."
+                ),
+
         }), 504
+
 
     except requests.exceptions.RequestException as e:
 
@@ -1172,11 +2032,17 @@ def get_doctor_details(place_id):
         )
 
         return jsonify({
-            "success": False,
-            "error": (
-                "Could not connect to Google Places."
-            ),
+
+            "success":
+                False,
+
+            "error":
+                (
+                    "Could not connect to Google Places."
+                ),
+
         }), 502
+
 
     except Exception as e:
 
@@ -1186,11 +2052,18 @@ def get_doctor_details(place_id):
         )
 
         return jsonify({
-            "success": False,
-            "error": (
-                "Failed to get facility details."
-            ),
-            "message": str(e),
+
+            "success":
+                False,
+
+            "error":
+                (
+                    "Failed to get facility details."
+                ),
+
+            "message":
+                str(e),
+
         }), 500
 
 
@@ -1208,38 +2081,67 @@ def geocode_address():
     try:
 
         if not GOOGLE_MAPS_API_KEY:
+
             return jsonify({
-                "success": False,
-                "error": (
-                    "GOOGLE_MAPS_API_KEY is not configured."
-                ),
+
+                "success":
+                    False,
+
+                "error":
+                    (
+                        "GOOGLE_MAPS_API_KEY is not configured."
+                    ),
+
             }), 500
+
 
         data = request.get_json(
             silent=True
         ) or {}
 
+
         address = str(
-            data.get("address", "")
+
+            data.get(
+                "address",
+                ""
+            )
+
         ).strip()
 
+
         if not address:
+
             return jsonify({
-                "success": False,
-                "error": "Address is required.",
+
+                "success":
+                    False,
+
+                "error":
+                    "Address is required.",
+
             }), 400
+
 
         print(
             "Google Geocoding request:",
             address
         )
 
+
         params = {
-            "address": address,
-            "regionCode": "IN",
+
+            "address":
+                address,
+
+            "regionCode":
+                "IN",
+
         }
 
+
         headers = {
+
             "X-Goog-Api-Key":
                 GOOGLE_MAPS_API_KEY,
 
@@ -1249,14 +2151,22 @@ def geocode_address():
                     "results.location,"
                     "results.formattedAddress"
                 ),
+
         }
 
+
         response = requests.get(
+
             GOOGLE_GEOCODING_URL,
+
             params=params,
+
             headers=headers,
+
             timeout=20,
+
         )
+
 
         if response.status_code != 200:
 
@@ -1270,35 +2180,58 @@ def geocode_address():
             )
 
             return jsonify({
-                "success": False,
-                "error": (
-                    "Google Geocoding API error: "
-                    + message
-                ),
+
+                "success":
+                    False,
+
+                "error":
+                    (
+                        "Google Geocoding API error: "
+                        +
+                        message
+                    ),
+
             }), response.status_code
 
+
         google_data = response.json()
+
 
         results = google_data.get(
             "results",
             []
         )
 
+
         if not results:
+
             return jsonify({
-                "success": False,
-                "error": (
-                    "No location found for "
-                    "the entered address."
-                ),
+
+                "success":
+                    False,
+
+                "error":
+                    (
+                        "No location found for "
+                        "the entered address."
+                    ),
+
             }), 404
+
 
         result = results[0]
 
+
         location = (
-            result.get("location")
+
+            result.get(
+                "location"
+            )
+
             or {}
+
         )
+
 
         latitude = location.get(
             "latitude"
@@ -1308,17 +2241,26 @@ def geocode_address():
             "longitude"
         )
 
+
         if (
             latitude is None
-            or longitude is None
+            or
+            longitude is None
         ):
+
             return jsonify({
-                "success": False,
-                "error": (
-                    "Google did not return "
-                    "coordinates."
-                ),
+
+                "success":
+                    False,
+
+                "error":
+                    (
+                        "Google did not return "
+                        "coordinates."
+                    ),
+
             }), 502
+
 
         return jsonify({
 
@@ -1326,31 +2268,46 @@ def geocode_address():
                 True,
 
             "lat":
-                float(latitude),
+                float(
+                    latitude
+                ),
 
             "lng":
-                float(longitude),
+                float(
+                    longitude
+                ),
 
             "display_name":
+
                 result.get(
                     "formattedAddress"
-                ) or address,
+                )
+                or
+                address,
 
             "place_id":
+
                 result.get(
                     "placeId"
                 ),
 
         }), 200
 
+
     except requests.exceptions.Timeout:
 
         return jsonify({
-            "success": False,
-            "error": (
-                "Google Geocoding request timed out."
-            ),
+
+            "success":
+                False,
+
+            "error":
+                (
+                    "Google Geocoding request timed out."
+                ),
+
         }), 504
+
 
     except requests.exceptions.RequestException as e:
 
@@ -1360,11 +2317,17 @@ def geocode_address():
         )
 
         return jsonify({
-            "success": False,
-            "error": (
-                "Could not connect to Google Geocoding."
-            ),
+
+            "success":
+                False,
+
+            "error":
+                (
+                    "Could not connect to Google Geocoding."
+                ),
+
         }), 502
+
 
     except Exception as e:
 
@@ -1374,11 +2337,18 @@ def geocode_address():
         )
 
         return jsonify({
-            "success": False,
-            "error": (
-                "Geocoding server error."
-            ),
-            "message": str(e),
+
+            "success":
+                False,
+
+            "error":
+                (
+                    "Geocoding server error."
+                ),
+
+            "message":
+                str(e),
+
         }), 500
 
 
@@ -1390,13 +2360,16 @@ def geocode_address():
     "/log/<user_id>",
     methods=["POST"]
 )
-def log_symptoms(user_id):
+def log_symptoms(
+    user_id
+):
 
     try:
 
         data = request.get_json(
             silent=True
         ) or {}
+
 
         print(
             f"Symptoms logged for user: {user_id}"
@@ -1405,6 +2378,7 @@ def log_symptoms(user_id):
         print(
             f"Data: {data}"
         )
+
 
         return jsonify({
 
@@ -1415,6 +2389,7 @@ def log_symptoms(user_id):
                 "Symptoms logged successfully",
 
         }), 200
+
 
     except Exception as e:
 
@@ -1450,16 +2425,20 @@ def chat():
             silent=True
         ) or {}
 
+
         message = data.get(
             "message"
         )
+
 
         history = data.get(
             "history",
             []
         )
 
+
         if not message:
+
             return jsonify({
 
                 "error":
@@ -1470,7 +2449,9 @@ def chat():
 
             }), 400
 
+
         if client is None:
+
             return jsonify({
 
                 "error":
@@ -1481,54 +2462,91 @@ def chat():
 
             }), 503
 
+
         # ----------------------------------------------------
         # BUILD MESSAGES
         # ----------------------------------------------------
 
         messages = [
+
             {
+
                 "role":
                     "system",
 
                 "content":
                     SYSTEM_PROMPT,
+
             }
+
         ]
+
 
         # ----------------------------------------------------
         # ADD HISTORY
         # ----------------------------------------------------
 
-        if isinstance(history, list):
+        if isinstance(
+            history,
+            list
+        ):
 
             for item in history:
 
-                if not isinstance(item, dict):
+                if not isinstance(
+                    item,
+                    dict
+                ):
+
                     continue
+
 
                 role = item.get(
+
                     "role",
+
                     "user"
+
                 )
+
 
                 content = item.get(
+
                     "content",
+
                     ""
+
                 )
 
+
                 if role not in [
+
                     "user",
+
                     "assistant"
+
                 ]:
+
                     role = "user"
 
+
                 if not content:
+
                     continue
 
+
                 messages.append({
-                    "role": role,
-                    "content": str(content),
+
+                    "role":
+                        role,
+
+                    "content":
+                        str(
+                            content
+                        ),
+
                 })
+
 
         # ----------------------------------------------------
         # CURRENT MESSAGE
@@ -1540,9 +2558,12 @@ def chat():
                 "user",
 
             "content":
-                str(message),
+                str(
+                    message
+                ),
 
         })
+
 
         print(
             "=============================================="
@@ -1564,6 +2585,7 @@ def chat():
             "=============================================="
         )
 
+
         # ----------------------------------------------------
         # OPENROUTER
         # ----------------------------------------------------
@@ -1577,10 +2599,14 @@ def chat():
             max_tokens=1000,
 
             extra_body={
+
                 "models":
                     AI_FALLBACK_MODELS,
+
             },
+
         )
+
 
         # ----------------------------------------------------
         # GET RESPONSE
@@ -1588,14 +2614,21 @@ def chat():
 
         reply = None
 
+
         try:
 
             reply = (
+
                 response
+
                 .choices[0]
+
                 .message
+
                 .content
+
             )
+
 
         except Exception as e:
 
@@ -1603,6 +2636,7 @@ def chat():
                 "AI response extraction error:",
                 e
             )
+
 
         if not reply:
 
@@ -1616,11 +2650,17 @@ def chat():
 
             }), 502
 
+
         actual_model = getattr(
+
             response,
+
             "model",
+
             None
+
         )
+
 
         print(
             "ASHA AI CHAT SUCCESS"
@@ -1629,6 +2669,7 @@ def chat():
         print(
             f"Model used: {actual_model}"
         )
+
 
         return jsonify({
 
@@ -1642,6 +2683,7 @@ def chat():
                 actual_model,
 
         }), 200
+
 
     except Exception as e:
 
@@ -1669,7 +2711,9 @@ def chat():
 # ============================================================
 
 @app.errorhandler(404)
-def not_found(error):
+def not_found(
+    error
+):
 
     return jsonify({
 
@@ -1683,7 +2727,9 @@ def not_found(error):
 
 
 @app.errorhandler(405)
-def method_not_allowed(error):
+def method_not_allowed(
+    error
+):
 
     return jsonify({
 
@@ -1697,7 +2743,9 @@ def method_not_allowed(error):
 
 
 @app.errorhandler(500)
-def internal_error(error):
+def internal_error(
+    error
+):
 
     return jsonify({
 
@@ -1717,14 +2765,24 @@ def internal_error(error):
 if __name__ == "__main__":
 
     port = int(
+
         os.environ.get(
+
             "PORT",
+
             "10000"
+
         )
+
     )
 
+
     app.run(
+
         host="0.0.0.0",
+
         port=port,
+
         debug=False
+
     )
