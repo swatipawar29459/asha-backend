@@ -1,510 +1,311 @@
-
 import 'dart:convert';
 
-import 'package:asha_app/services/health_profile_store.dart';
 import 'package:http/http.dart' as http;
 
-import '../models/prediction.dart';
 import '../models/doctor.dart';
-
-// ============================================================
-// API SERVICE
-// ============================================================
+import '../models/prediction.dart';
+import '../services/health_profile_store.dart';
 
 class ApiService {
-  static const String baseUrl = 'https://asha-backend-1.onrender.com';
+  static const String baseUrl =
+      'https://asha-backend-1.onrender.com';
+
   // ============================================================
   // PREDICTION
   // ============================================================
 
   static Future<Prediction> fetchPrediction({
-    required String userId,
+    String? userId,
   }) async {
-    final profile = HealthProfileStore.toJson();
+    final String? id =
+        userId ?? HealthProfileStore.userId?.toString();
 
-    print('================================');
-    print('ASHA ML PREDICTION');
-    print('Firebase UID: $userId');
-    print('Sending profile: $profile');
-    print(
-      'URL: $baseUrl/predict/$userId',
+    if (id == null || id.isEmpty) {
+      throw Exception('User ID not found.');
+    }
+
+    final Uri url =
+        Uri.parse('$baseUrl/predict/$id');
+
+    final http.Response response =
+        await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+      },
     );
-    print('================================');
 
-    try {
-      final response = await http
-          .post(
-            Uri.parse(
-              '$baseUrl/predict/$userId',
-            ),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode(profile),
-          )
-          .timeout(
-            const Duration(seconds: 30),
-          );
-
-      print('================================');
-      print(
-        'Prediction response: '
-        '${response.statusCode}',
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Prediction failed: ${response.statusCode}\n${response.body}',
       );
-      print(
-        'Prediction body: '
-        '${response.body}',
+    }
+
+    final dynamic decoded =
+        jsonDecode(response.body);
+
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception(
+        'Invalid prediction response from server.',
       );
-      print('================================');
+    }
 
-      if (response.statusCode != 200) {
-        throw Exception(
-          'Prediction failed: ${response.body}',
-        );
-      }
+    return Prediction.fromJson(decoded);
+  }
 
-      final decoded = jsonDecode(
-        response.body,
+  // Compatibility alias
+  static Future<Prediction> predict({
+    String? userId,
+  }) {
+    return fetchPrediction(
+      userId: userId,
+    );
+  }
+
+  // ============================================================
+  // HEALTH DATA LOG
+  // ============================================================
+
+  static Future<void> logHealthData(
+    Map<String, dynamic> data,
+  ) async {
+    final String? id =
+        HealthProfileStore.userId?.toString();
+
+    if (id == null || id.isEmpty) {
+      throw Exception('User ID not found.');
+    }
+
+    final Uri url =
+        Uri.parse('$baseUrl/log/$id');
+
+    final http.Response response =
+        await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(data),
+    );
+
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300) {
+      throw Exception(
+        'Failed to save health data: '
+        '${response.statusCode}\n${response.body}',
       );
-
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception(
-          'Invalid prediction response.',
-        );
-      }
-
-      final prediction =
-          Prediction.fromJson(decoded);
-
-      print(
-        'ML prediction parsed successfully.',
-      );
-      print(
-        'Predicted next period: '
-        '${prediction.nextPeriodLabel}',
-      );
-
-      return prediction;
-    } catch (e) {
-      print(
-        'Prediction API error: $e',
-      );
-      rethrow;
     }
   }
 
   // ============================================================
-  // LOG SYMPTOMS
+  // SYMPTOMS
   // ============================================================
 
   static Future<void> logSymptoms(
     String userId,
-    Map<String, dynamic> log,
+    Map<String, dynamic> symptoms,
   ) async {
-    final response = await http.post(
-      Uri.parse(
-        '$baseUrl/log/$userId',
-      ),
+    if (userId.isEmpty) {
+      throw Exception('User ID not found.');
+    }
+
+    final Uri url =
+        Uri.parse('$baseUrl/log/$userId');
+
+    final http.Response response =
+        await http.post(
+      url,
       headers: {
         'Content-Type': 'application/json',
       },
-      body: jsonEncode(log),
+      body: jsonEncode(symptoms),
     );
 
-    if (response.statusCode != 200) {
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300) {
       throw Exception(
-        'Could not save symptoms',
+        'Failed to save symptoms: '
+        '${response.statusCode}\n${response.body}',
       );
     }
   }
 
   // ============================================================
-  // AI CHAT
+  // CHAT
   // ============================================================
 
   static Future<String> sendChatMessage(
-    String message, {
-    List<Map<String, String>> history =
-        const [],
-  }) async {
-    try {
-      print(
-        '--------------------------------',
-      );
-      print('ASHA CHAT REQUEST');
-      print('Message: $message');
-      print('History: $history');
-      print(
-        'URL: $baseUrl/chat',
-      );
+    String message,
+  ) async {
+    final Uri url =
+        Uri.parse('$baseUrl/chat');
 
-      final response = await http
-          .post(
-            Uri.parse(
-              '$baseUrl/chat',
-            ),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode({
-              'message': message,
-              'history': history,
-            }),
-          )
-          .timeout(
-            const Duration(seconds: 30),
-          );
-
-      print(
-        '--------------------------------',
-      );
-      print('ASHA CHAT RESPONSE');
-      print(
-        'Status: ${response.statusCode}',
-      );
-      print(
-        'Body: ${response.body}',
-      );
-      print(
-        '--------------------------------',
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception(
-          'Chat failed: ${response.body}',
-        );
-      }
-
-      final decoded =
-          jsonDecode(response.body);
-
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception(
-          'Invalid chat response.',
-        );
-      }
-
-      final reply =
-          decoded['reply'] as String?;
-
-      if (reply == null) {
-        throw Exception(
-          'No reply in response.',
-        );
-      }
-
-      return reply;
-    } catch (e) {
-      print(
-        'Chat error: $e',
-      );
-      rethrow;
-    }
-  }
-
-  // ============================================================
-  // FIND DOCTORS
-  // ============================================================
-
- static Future<List<Doctor>> findDoctors({
-  required double latitude,
-  required double longitude,
-  int radius = 5000,
-}) async {
-  try {
-    print('================================');
-    print('DOCTOR FINDER REQUEST');
-    print('Latitude: $latitude');
-    print('Longitude: $longitude');
-    print('Radius: $radius meters');
-
-    final response = await http
-        .post(
-          Uri.parse('$baseUrl/find-doctors'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode({
-            'latitude': latitude,
-            'longitude': longitude,
-            'radius': radius,
-          }),
-        )
-        .timeout(
-          const Duration(seconds: 40),
-        );
-
-    print(
-      'Doctor Finder Response: ${response.statusCode}',
+    final http.Response response =
+        await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'message': message,
+      }),
     );
-
-    print(
-      'Response body: ${response.body}',
-    );
-
-    print('================================');
 
     if (response.statusCode != 200) {
-      try {
-        final errorBody = jsonDecode(response.body);
-
-        if (errorBody is Map<String, dynamic>) {
-          throw Exception(
-            errorBody['error'] ??
-                errorBody['message'] ??
-                'Server returned ${response.statusCode}',
-          );
-        }
-      } catch (_) {
-        throw Exception(
-          'Doctor search failed '
-          '(${response.statusCode}): ${response.body}',
-        );
-      }
+      throw Exception(
+        'Chat failed: ${response.statusCode}\n${response.body}',
+      );
     }
 
-    final decoded = jsonDecode(response.body);
+    final dynamic decoded =
+        jsonDecode(response.body);
 
     if (decoded is! Map<String, dynamic>) {
       throw Exception(
-        'Invalid doctor response from server.',
+        'Invalid chat response.',
       );
     }
 
-    if (decoded['error'] != null) {
-      throw Exception(
-        decoded['error'].toString(),
-      );
-    }
-
-    final rawFacilities = decoded['facilities'];
-
-    if (rawFacilities is! List) {
-      throw Exception(
-        'Server did not return a facilities list.',
-      );
-    }
-
-    final facilities = rawFacilities
-        .whereType<Map<String, dynamic>>()
-        .map(
-          (item) => Doctor.fromJson(item),
-        )
-        .where(
-          (doctor) =>
-              doctor.latitude != 0 &&
-              doctor.longitude != 0 &&
-              doctor.name.isNotEmpty,
-        )
-        .toList();
-
-    print(
-      'Found ${facilities.length} valid healthcare facilities',
-    );
-
-    return facilities;
-  } catch (e) {
-    print(
-      'ERROR IN DOCTOR FINDER: $e',
-    );
-
-    rethrow;
+    return decoded['reply']?.toString() ??
+        decoded['message']?.toString() ??
+        'Sorry, I could not generate a response.';
   }
-}
-  
+
+  // Compatibility alias
+  static Future<String> chat(
+    String message,
+  ) {
+    return sendChatMessage(message);
+  }
 
   // ============================================================
-  // GEOCODE ADDRESS
+  // GOOGLE PLACES - FIND DOCTORS
   // ============================================================
 
-  static Future<Map<String, dynamic>>
-      geocodeAddress(
+  static Future<List<Doctor>> findDoctors({
+    required double latitude,
+    required double longitude,
+    double radius = 5000,
+  }) async {
+    final Uri url =
+        Uri.parse(
+      '$baseUrl/find-doctors'
+      '?lat=$latitude'
+      '&lng=$longitude'
+      '&radius=$radius',
+    );
+
+    final http.Response response =
+        await http.get(url);
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to find healthcare facilities: '
+        '${response.statusCode}\n${response.body}',
+      );
+    }
+
+    final dynamic decoded =
+        jsonDecode(response.body);
+
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception(
+        'Invalid doctor search response.',
+      );
+    }
+
+    final dynamic doctorsJson =
+        decoded['doctors'];
+
+    if (doctorsJson is! List) {
+      return <Doctor>[];
+    }
+
+    return doctorsJson
+        .whereType<Map<String, dynamic>>()
+        .map(Doctor.fromJson)
+        .toList();
+  }
+
+  // ============================================================
+  // GOOGLE GEOCODING
+  // ============================================================
+
+  static Future<Map<String, dynamic>?> geocodeAddress(
     String address,
   ) async {
-    try {
-      print(
-        '================================',
-      );
-      print('GEOCODING ADDRESS');
-      print('Address: $address');
-
-      final uri = Uri.https(
-        'nominatim.openstreetmap.org',
-        '/search',
-        {
-          'q': address,
-          'format': 'jsonv2',
-          'limit': '1',
-          'countrycodes': 'in',
-          'addressdetails': '1',
-        },
-      );
-
-      final response = await http
-          .get(
-            uri,
-            headers: {
-              'Accept': 'application/json',
-              'User-Agent':
-                  'AshaMenstrualHealthApp/1.0',
-            },
-          )
-          .timeout(
-            const Duration(seconds: 20),
-          );
-
-      print(
-        'Geocoding Response: '
-        '${response.statusCode}',
-      );
-
-      print(
-        'Geocoding Body: '
-        '${response.body}',
-      );
-
-      print(
-        '================================',
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception(
-          'Address search failed: '
-          '${response.statusCode}',
-        );
-      }
-
-      final decoded =
-          jsonDecode(response.body);
-
-      if (decoded is! List ||
-          decoded.isEmpty) {
-        throw Exception(
-          'No location found for this address.',
-        );
-      }
-
-      final firstResult =
-          decoded.first;
-
-      if (firstResult
-          is! Map<String, dynamic>) {
-        throw Exception(
-          'Invalid geocoding response.',
-        );
-      }
-
-      final latitude =
-          double.tryParse(
-        firstResult['lat']
-                ?.toString() ??
-            '',
-      );
-
-      final longitude =
-          double.tryParse(
-        firstResult['lon']
-                ?.toString() ??
-            '',
-      );
-
-      if (latitude == null ||
-          longitude == null) {
-        throw Exception(
-          'Location coordinates were not found.',
-        );
-      }
-
-      final displayName =
-          firstResult['display_name']
-                  ?.toString() ??
-              address;
-
-      print(
-        'Geocoded location: '
-        '$latitude, $longitude',
-      );
-
-      return {
-        'lat': latitude,
-        'lng': longitude,
-        'display_name': displayName,
-      };
-    } catch (e) {
-      print(
-        'Geocoding error: $e',
-      );
-      rethrow;
+    if (address.trim().isEmpty) {
+      return null;
     }
+
+    final Uri url =
+        Uri.parse(
+      '$baseUrl/geocode'
+      '?address=${Uri.encodeComponent(address)}',
+    );
+
+    final http.Response response =
+        await http.get(url);
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Geocoding failed: '
+        '${response.statusCode}\n${response.body}',
+      );
+    }
+
+    final dynamic decoded =
+        jsonDecode(response.body);
+
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception(
+        'Invalid geocoding response.',
+      );
+    }
+
+    return decoded;
   }
 
   // ============================================================
-  // GET DOCTOR DETAILS
+  // GOOGLE PLACES DETAILS
   // ============================================================
 
-  static Future<DoctorDetails>
-      getDoctorDetails({
-    required String placeId,
-  }) async {
-    try {
-      print(
-        'Getting details for place: '
-        '$placeId',
-      );
-
-      final response = await http
-          .get(
-            Uri.parse(
-              '$baseUrl/find-doctors/$placeId',
-            ),
-          )
-          .timeout(
-            const Duration(seconds: 30),
-          );
-
-      print(
-        'Doctor Details Response: '
-        '${response.statusCode}',
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception(
-          'Failed to get doctor details: '
-          '${response.body}',
-        );
-      }
-
-      final decoded =
-          jsonDecode(response.body);
-
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception(
-          'Invalid response format',
-        );
-      }
-
-      final rawDetails =
-          decoded['details'];
-
-      if (rawDetails
-          is! Map<String, dynamic>) {
-        throw Exception(
-          'Doctor details not found.',
-        );
-      }
-
-      return DoctorDetails.fromJson(
-        rawDetails,
-      );
-    } catch (e) {
-      print(
-        'Error getting doctor details: $e',
-      );
-      rethrow;
+  static Future<DoctorDetails?> getDoctorDetails(
+    String placeId,
+  ) async {
+    if (placeId.isEmpty) {
+      return null;
     }
+
+    final Uri url =
+        Uri.parse(
+      '$baseUrl/find-doctors/'
+      '${Uri.encodeComponent(placeId)}',
+    );
+
+    final http.Response response =
+        await http.get(url);
+
+    if (response.statusCode == 404) {
+      return null;
+    }
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to load doctor details: '
+        '${response.statusCode}\n${response.body}',
+      );
+    }
+
+    final dynamic decoded =
+        jsonDecode(response.body);
+
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception(
+        'Invalid doctor details response.',
+      );
+    }
+
+    return DoctorDetails.fromJson(decoded);
   }
 }
-
