@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/doctor.dart';
@@ -15,43 +16,50 @@ class ApiService {
   // ============================================================
 
   static Future<Prediction> fetchPrediction({
-    String? userId,
-  }) async {
-    final String? id =
-        userId ?? HealthProfileStore.userId?.toString();
+  String? userId,
+}) async {
+  final uid =
+      userId ??
+      FirebaseAuth.instance.currentUser?.uid;
 
-    if (id == null || id.isEmpty) {
-      throw Exception('User ID not found.');
-    }
-
-    final Uri url =
-        Uri.parse('$baseUrl/predict/$id');
-
-    final http.Response response =
-        await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Prediction failed: ${response.statusCode}\n${response.body}',
-      );
-    }
-
-    final dynamic decoded =
-        jsonDecode(response.body);
-
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception(
-        'Invalid prediction response from server.',
-      );
-    }
-
-    return Prediction.fromJson(decoded);
+  if (uid == null || uid.isEmpty) {
+    throw Exception('Firebase user not found.');
   }
+
+  // IMPORTANT:
+  // Prediction is generated ONLY from the user's saved
+  // HealthProfileStore data.
+  final profileData =
+      HealthProfileStore.toJson();
+
+  final url =
+      Uri.parse('$baseUrl/predict/$uid');
+
+  final response = await http.post(
+    url,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: jsonEncode(profileData),
+  );
+
+  if (response.statusCode != 200) {
+    throw Exception(
+      'Prediction failed: ${response.statusCode}\n'
+      '${response.body}',
+    );
+  }
+
+  final decoded = jsonDecode(response.body);
+
+  if (decoded is! Map<String, dynamic>) {
+    throw Exception(
+      'Invalid prediction response from server.',
+    );
+  }
+
+  return Prediction.fromJson(decoded);
+}
 
   // Compatibility alias
   static Future<Prediction> predict({

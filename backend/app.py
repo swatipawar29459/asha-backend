@@ -70,7 +70,6 @@ AI_PRIMARY_MODEL = "openrouter/free"
 AI_FALLBACK_MODELS = [
     "openrouter/free",
     "google/gemma-4-31b-it:free",
-    "google/gemma-4-26b-a4b-it:free",
     "qwen/qwen3.8-27b:free",
 ]
 
@@ -403,38 +402,41 @@ def health():
 # PREDICTION ENDPOINT
 # ============================================================
 
-@app.route(
-    "/predict/<user_id>",
-    methods=["POST"]
-)
+@app.route("/predict/<user_id>", methods=["POST"])
 def predict(user_id):
-
     try:
-        data = request.get_json(
-            silent=True
-        )
+        data = request.get_json(silent=True)
 
         if not data:
             return jsonify({
-                "error": "No data provided",
-                "status": "incomplete_profile",
-                "message": (
-                    "Please complete your health profile"
-                ),
+                "status": "error",
+                "message": "No user health profile data received.",
+                "error": "incomplete_profile"
             }), 400
 
-        print(
-            f"Prediction request received for user: {user_id}"
-        )
+        required_fields = [
+            "age",
+            "cycle_length",
+            "period_length",
+            "bmi",
+            "last_period_date",
+        ]
 
-        print(
-            f"Prediction profile: {data}"
-        )
+        missing = [
+            field
+            for field in required_fields
+            if data.get(field) is None
+        ]
 
-        # ----------------------------------------------------
-        # REQUIRED FIELDS
-        # ----------------------------------------------------
+        if missing:
+            return jsonify({
+                "status": "error",
+                "message": "Required health profile data is missing.",
+                "error": "incomplete_profile",
+                "missing_fields": missing
+            }), 400
 
+        # User's actual saved profile data
         cycle_length = get_int(
             data,
             "cycle_length"
@@ -457,89 +459,15 @@ def predict(user_id):
 
         stress_level = get_int(
             data,
-            "stress_level"
+            "stress_level",
+            data.get("stress", 3)
         )
 
-        if stress_level is None:
-            stress_level = get_int(
-                data,
-                "stress"
-            )
-
-        missing_fields = []
-
-        if cycle_length is None:
-            missing_fields.append(
-                "cycle_length"
-            )
-
-        if age is None:
-            missing_fields.append(
-                "age"
-            )
-
-        if period_length is None:
-            missing_fields.append(
-                "period_length"
-            )
-
-        if bmi is None:
-            missing_fields.append(
-                "bmi"
-            )
-
-        if stress_level is None:
-            missing_fields.append(
-                "stress_level"
-            )
-
-        # ----------------------------------------------------
-        # LAST PERIOD DATE
-        # ----------------------------------------------------
-
-        last_period_date = data.get(
-            "last_period_date"
+        exercise_frequency = get_int(
+            data,
+            "exercise_frequency",
+            1
         )
-
-        if not is_valid_date_string(
-            last_period_date
-        ):
-            missing_fields.append(
-                "last_period_date"
-            )
-
-        if missing_fields:
-            print(
-                "Missing prediction data:",
-                missing_fields
-            )
-
-            return jsonify({
-                "status": "incomplete_profile",
-                "missing_fields": missing_fields,
-                "message": (
-                    "Please complete your profile. "
-                    f"Missing: {', '.join(missing_fields)}"
-                ),
-                "prediction": None,
-                "next_period": None,
-                "fertile_window": None,
-                "confidence": 0,
-            }), 400
-
-        # ----------------------------------------------------
-        # OPTIONAL FIELDS
-        # ----------------------------------------------------
-
-        exercise_frequency = encode_exercise(
-            data.get(
-                "exercise_frequency",
-                "moderate"
-            )
-        )
-
-        if exercise_frequency is None:
-            exercise_frequency = 1
 
         sleep_hours = get_number(
             data,
@@ -547,15 +475,10 @@ def predict(user_id):
             7
         )
 
-        diet = encode_diet(
-            data.get(
-                "diet",
-                "low carb"
-            )
+        diet = data.get(
+            "diet",
+            "Low Carb"
         )
-
-        if diet is None:
-            diet = 0
 
         pcos = get_int(
             data,
@@ -563,248 +486,124 @@ def predict(user_id):
             0
         )
 
-        # ----------------------------------------------------
-        # MODEL FEATURES
-        # ----------------------------------------------------
-
-        features = [
-            cycle_length,
-            period_length,
-            age,
-            bmi,
-            stress_level,
-            exercise_frequency,
-            sleep_hours,
-            diet,
-            pcos,
-        ]
-
-        print(
-            f"Features: {features}"
-        )
-
-        print(
-            f"Feature order: {FEATURE_ORDER}"
+        last_period_date = data.get(
+            "last_period_date"
         )
 
         # ----------------------------------------------------
-        # MODEL CHECK
+        # ML FEATURES
         # ----------------------------------------------------
 
-        if model is None:
-            return jsonify({
-                "error": "ML model not available",
-                "status": "server_error",
-            }), 500
+        features = pd.DataFrame([{
+            "Cycle Length": cycle_length,
+            "Period Length": period_length,
+            "Age": age,
+            "BMI": bmi,
+            "Stress Level": stress_level,
+            "Exercise Frequency": encode_exercise(
+                exercise_frequency
+            ),
+            "Sleep Hours": sleep_hours,
+            "Diet": encode_diet(diet),
+            "PCOS": pcos,
+        }])
 
         # ----------------------------------------------------
-        # MODEL PREDICTION
+        # ML PREDICTION
         # ----------------------------------------------------
 
-        try:
-            df = pd.DataFrame(
-                [features],
-                columns=FEATURE_ORDER
-            )
+        predicted_days = float(
+            model.predict(features)[0]
+        )
 
-            print(
-                f"Model input DataFrame:\n{df}"
-            )
+        predicted_days = round(
+            max(15, min(45, predicted_days))
+        )
 
-            print(
-                f"Model type: {type(model).__name__}"
-            )
+        last_period = datetime.strptime(
+            last_period_date[:10],
+            "%Y-%m-%d"
+        )
 
-            raw_prediction = model.predict(
-                df
-            )[0]
+        next_period = (
+            last_period +
+            timedelta(days=predicted_days)
+        )
 
-        except Exception as e:
-            print(
-                "Prediction error:",
-                e
-            )
+        ovulation_date = (
+            next_period -
+            timedelta(days=14)
+        )
 
-            return jsonify({
-                "error": "Failed to make prediction",
-                "message": str(e),
-                "status": "prediction_error",
-            }), 500
+        fertile_start = (
+            ovulation_date -
+            timedelta(days=5)
+        )
+
+        fertile_end = ovulation_date
 
         # ----------------------------------------------------
         # CONFIDENCE
         # ----------------------------------------------------
 
-        try:
-            if hasattr(model, "predict_proba"):
-                confidence = (
-                    float(
-                        model.predict_proba(df)[0].max()
-                    )
-                    * 100
+        confidence = 87.0
+
+        if hasattr(model, "predict_proba"):
+            try:
+                probabilities = model.predict_proba(
+                    features
                 )
-            else:
+
+                if probabilities is not None:
+                    confidence = round(
+                        float(
+                            max(probabilities[0])
+                            * 100
+                        ),
+                        1
+                    )
+            except Exception:
                 confidence = 87.0
-
-        except Exception as e:
-            print(
-                "Confidence calculation error:",
-                e
-            )
-
-            confidence = 87.0
-
-        # ----------------------------------------------------
-        # PREDICTED CYCLE LENGTH
-        # ----------------------------------------------------
-
-        predicted_days = int(
-            round(
-                float(raw_prediction)
-            )
-        )
-
-        predicted_days = max(
-            15,
-            min(
-                predicted_days,
-                45
-            )
-        )
-
-        print(
-            f"Raw ML prediction: {raw_prediction}"
-        )
-
-        print(
-            f"Final predicted cycle length: "
-            f"{predicted_days}"
-        )
-
-        # ----------------------------------------------------
-        # LAST PERIOD
-        # ----------------------------------------------------
-
-        last_period = datetime.fromisoformat(
-            str(last_period_date).replace(
-                "Z",
-                "+00:00"
-            )
-        )
-
-        if last_period.tzinfo is not None:
-            last_period = (
-                last_period
-                .astimezone()
-                .replace(tzinfo=None)
-            )
-
-        # ----------------------------------------------------
-        # NEXT PERIOD
-        # ----------------------------------------------------
-
-        next_period = (
-            last_period
-            + timedelta(days=predicted_days)
-        )
-
-        # ----------------------------------------------------
-        # OVULATION
-        # ----------------------------------------------------
-
-        ovulation = (
-            next_period
-            - timedelta(days=14)
-        )
-
-        # ----------------------------------------------------
-        # FERTILE WINDOW
-        # ----------------------------------------------------
-
-        fertile_start = (
-            ovulation
-            - timedelta(days=5)
-        )
-
-        fertile_end = ovulation
 
         # ----------------------------------------------------
         # CURRENT CYCLE DAY
         # ----------------------------------------------------
 
-        cycle_day_at_prediction = (
-            datetime.now() - last_period
+        today = datetime.now().date()
+
+        current_day = (
+            today -
+            last_period.date()
         ).days + 1
 
-        if cycle_day_at_prediction < 1:
-            cycle_day_at_prediction = 1
+        if current_day < 1:
+            current_day = 1
 
         # ----------------------------------------------------
-        # CYCLE PROGRESS
-        # ----------------------------------------------------
-
-        cycle_progress = (
-            cycle_day_at_prediction
-            / predicted_days
-        )
-
-        cycle_progress = max(
-            0.0,
-            min(
-                cycle_progress,
-                1.0
-            )
-        )
-
-        # ----------------------------------------------------
-        # CYCLE PHASE
+        # PHASE
         # ----------------------------------------------------
 
         ovulation_day = (
             predicted_days - 14
         )
 
-        if cycle_day_at_prediction <= period_length:
+        if current_day <= period_length:
+            phase = "Menstrual"
 
-            phase_label = "Menstrual Phase"
+        elif current_day < ovulation_day:
+            phase = "Follicular"
 
-        elif cycle_day_at_prediction < ovulation_day:
-
-            phase_label = "Follicular Phase"
-
-        elif cycle_day_at_prediction <= (
-            ovulation_day + 1
-        ):
-
-            phase_label = "Ovulation Phase"
+        elif current_day <= ovulation_day + 1:
+            phase = "Ovulation"
 
         else:
-
-            phase_label = "Luteal Phase"
-
-        # ----------------------------------------------------
-        # PCOS STATUS
-        # ----------------------------------------------------
-
-        if pcos == 1:
-            pcos_status = "Reported PCOS"
-        else:
-            pcos_status = "No PCOS reported"
+            phase = "Luteal"
 
         # ----------------------------------------------------
-        # FEATURE IMPORTANCE
-        # ----------------------------------------------------
-
-        factor_weights = (
-            get_model_feature_importance()
-        )
-
-        # ----------------------------------------------------
-        # SUCCESS RESPONSE
+        # RESPONSE
         # ----------------------------------------------------
 
         return jsonify({
-
             "status": "success",
 
             "prediction": predicted_days,
@@ -813,51 +612,55 @@ def predict(user_id):
                 predicted_days,
 
             "next_period":
-                next_period.date().isoformat(),
+                next_period.strftime("%Y-%m-%d"),
 
             "next_period_label":
-                next_period.strftime("%d/%m/%Y"),
+                next_period.strftime("%d %B %Y"),
 
             "ovulation_date":
-                ovulation.date().isoformat(),
+                ovulation_date.strftime("%Y-%m-%d"),
 
             "fertile_window": {
                 "start":
-                    fertile_start.date().isoformat(),
-
+                    fertile_start.strftime("%Y-%m-%d"),
                 "end":
-                    fertile_end.date().isoformat(),
+                    fertile_end.strftime("%Y-%m-%d"),
             },
 
-            "fertile_window_label": (
-                f"{fertile_start.strftime('%d/%m/%Y')}"
-                f" - "
-                f"{fertile_end.strftime('%d/%m/%Y')}"
-            ),
+            "fertile_window_start":
+                fertile_start.strftime("%Y-%m-%d"),
 
-            "confidence":
-                round(confidence, 2),
+            "fertile_window_end":
+                fertile_end.strftime("%Y-%m-%d"),
 
-            "ai_confidence":
-                round(confidence, 2),
+            "fertile_window_label":
+                f"{fertile_start.strftime('%d %b')} - "
+                f"{fertile_end.strftime('%d %b')}",
 
-            "current_day":
-                cycle_day_at_prediction,
+            "confidence": confidence,
+
+            "ai_confidence": confidence,
+
+            "current_day": current_day,
 
             "cycle_day_at_prediction":
-                cycle_day_at_prediction,
+                current_day,
 
-            "phase_label":
-                phase_label,
+            "phase_label": phase,
 
-            "cycle_progress":
-                cycle_progress,
+            "cycle_progress": round(
+                (
+                    current_day /
+                    max(predicted_days, 1)
+                ) * 100,
+                1
+            ),
 
             "factor_weights":
-                factor_weights,
+                get_model_feature_importance(),
 
             "pcos_risk":
-                pcos_status,
+                "Higher" if pcos == 1 else "Normal",
 
             "avg_cycle_length":
                 cycle_length,
@@ -865,21 +668,23 @@ def predict(user_id):
             "avg_period_length":
                 period_length,
 
-            "cycle_length_history": [
-                cycle_length
-            ],
-        }), 200
+            "cycle_length_history":
+                data.get(
+                    "period_history",
+                    []
+                ),
+        })
 
     except Exception as e:
-
         print(
-            "Unexpected error in /predict:",
-            e
+            "PREDICTION ERROR:",
+            str(e)
         )
 
         return jsonify({
-            "error": "Unexpected server error",
+            "status": "error",
             "message": str(e),
+            "error": "prediction_failed"
         }), 500
 
 
