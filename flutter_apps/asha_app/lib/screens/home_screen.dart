@@ -263,6 +263,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ============================================================
   // MAIN CONTENT
+  //
+  // LAYOUT ADJUSTED: Reduced side padding from 20 to 12
+  // for wider content that uses full screen width.
   // ============================================================
 
   Widget _buildMainContent() {
@@ -280,11 +283,13 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    final screenHeight = MediaQuery.sizeOf(context).height;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        20,
-        24,
-        20,
+        12,
+        0,
+        12,
         25,
       ),
       child: Column(
@@ -294,13 +299,27 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildErrorCard(),
 
           // ==================================================
+          // EXTRA TOP SPACE
+          // Places the cycle section lower on the screen.
+          // ==================================================
+
+          SizedBox(
+            height: screenHeight * 0.08,
+          ),
+
+          // ==================================================
           // CENTER CYCLE CIRCLE
           // ==================================================
 
           _buildCycleRing(),
 
-          // Small gap between circle and prediction cards
-          const SizedBox(height: 18),
+          // ==================================================
+          // SPACE BETWEEN CIRCLE AND CARDS
+          // ==================================================
+
+          SizedBox(
+            height: screenHeight * 0.06,
+          ),
 
           // ==================================================
           // NEXT PERIOD + FERTILE WINDOW
@@ -308,7 +327,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
           _buildPredictionCards(),
 
-          const SizedBox(height: 15),
+          // ==================================================
+          // SPACE BETWEEN CARDS AND ACTION BUTTONS
+          // ==================================================
+
+          SizedBox(
+            height: screenHeight * 0.04,
+          ),
 
           // ==================================================
           // ACTION BUTTONS
@@ -367,10 +392,13 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
   // CYCLE RING
   //
+  // SIZE ADJUSTED: Increased from 158x158 to 180x180
+  // for larger, more prominent display
+  //
   // REFERENCE UI:
   //
-  //       DAY 2
-  //   Menstrual Phase
+  //       DAY 29
+  //   Luteal Phase
   //   AI confidence 87%
   //
   // ============================================================
@@ -449,8 +477,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Center(
       child: SizedBox(
-        width: 158,
-        height: 158,
+        width: 180,
+        height: 180,
         child: Stack(
           alignment: Alignment.center,
           children: [
@@ -460,8 +488,8 @@ class _HomeScreenState extends State<HomeScreen> {
             // ==================================================
 
             SizedBox(
-              width: 158,
-              height: 158,
+              width: 180,
+              height: 180,
               child: CircularProgressIndicator(
                 value: progress,
                 strokeWidth: 10,
@@ -481,7 +509,7 @@ class _HomeScreenState extends State<HomeScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
 
-                // DAY 2 — SAME LINE
+                // DAY — SAME LINE
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment:
@@ -524,30 +552,30 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 7),
 
                 GestureDetector(
-  onTap: () {
-    openScreen(
-      const WhyPredictionScreen(),
-    );
-  },
-  child: Container(
-    padding: const EdgeInsets.symmetric(
-      horizontal: 10,
-      vertical: 5,
-    ),
-    decoration: BoxDecoration(
-      color: AshaColors.coral,
-      borderRadius: BorderRadius.circular(15),
-    ),
-    child: Text(
-      'AI confidence $confidencePercent%',
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 9,
-        fontWeight: FontWeight.w700,
-      ),
-    ),
-  ),
-),
+                  onTap: () {
+                    openScreen(
+                      const WhyPredictionScreen(),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AshaColors.coral,
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Text(
+                      'AI confidence $confidencePercent%',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ],
@@ -616,14 +644,14 @@ class _HomeScreenState extends State<HomeScreen> {
     required Color tint,
   }) {
     return Container(
-      height: 48,
+      height: 56,
       padding: const EdgeInsets.symmetric(
-        horizontal: 9,
-        vertical: 7,
+        horizontal: 12,
+        vertical: 8,
       ),
       decoration: BoxDecoration(
         color: tint,
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -635,10 +663,10 @@ class _HomeScreenState extends State<HomeScreen> {
               Icon(
                 icon,
                 color: iconColor,
-                size: 12,
+                size: 14,
               ),
 
-              const SizedBox(width: 3),
+              const SizedBox(width: 4),
 
               Expanded(
                 child: Text(
@@ -647,16 +675,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AshaColors.ink,
-                    fontSize: 7.5,
+                    fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
+                    letterSpacing: 0.3,
                   ),
                 ),
               ),
             ],
           ),
 
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
 
           Text(
             value,
@@ -664,7 +692,7 @@ class _HomeScreenState extends State<HomeScreen> {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: AshaColors.ink,
-              fontSize: 9,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -675,6 +703,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ============================================================
   // ACTION BUTTONS
+  //
+  // WIDTH & HEIGHT ADJUSTED: Buttons now wider and taller
+  // Button height increased from 37 to 44
   // ============================================================
 
   Widget _buildActionButtons() {
@@ -687,7 +718,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         SizedBox(
           width: double.infinity,
-          height: 37,
+          height: 44,
           child: ElevatedButton.icon(
             onPressed: () {
               openScreen(
@@ -698,7 +729,7 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(
               Icons.water_drop_outlined,
               color: AshaColors.ink,
-              size: 14,
+              size: 16,
             ),
 
             label: const Text(
@@ -706,7 +737,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(
                 color: AshaColors.ink,
                 fontWeight: FontWeight.w600,
-                fontSize: 10,
+                fontSize: 12,
               ),
             ),
 
@@ -717,13 +748,13 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: EdgeInsets.zero,
               shape: RoundedRectangleBorder(
                 borderRadius:
-                    BorderRadius.circular(22),
+                    BorderRadius.circular(24),
               ),
             ),
           ),
         ),
 
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
 
         // ======================================================
         // FIND DOCTOR
@@ -731,7 +762,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         SizedBox(
           width: double.infinity,
-          height: 37,
+          height: 44,
           child: OutlinedButton.icon(
             onPressed: () {
               openScreen(
@@ -742,7 +773,7 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(
               Icons.search_rounded,
               color: AshaColors.slate,
-              size: 14,
+              size: 16,
             ),
 
             label: const Text(
@@ -750,7 +781,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(
                 color: AshaColors.slate,
                 fontWeight: FontWeight.w600,
-                fontSize: 10,
+                fontSize: 12,
               ),
             ),
 
@@ -762,7 +793,7 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: EdgeInsets.zero,
               shape: RoundedRectangleBorder(
                 borderRadius:
-                    BorderRadius.circular(22),
+                    BorderRadius.circular(24),
               ),
             ),
           ),

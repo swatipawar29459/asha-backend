@@ -222,17 +222,17 @@ class ApiService {
       );
     }
 
-    final dynamic doctorsJson =
-        decoded['doctors'];
+    final dynamic facilitiesJson =
+    decoded['facilities'];
 
-    if (doctorsJson is! List) {
-      return <Doctor>[];
-    }
+if (facilitiesJson is! List) {
+  return <Doctor>[];
+}
 
-    return doctorsJson
-        .whereType<Map<String, dynamic>>()
-        .map(Doctor.fromJson)
-        .toList();
+return facilitiesJson
+    .whereType<Map<String, dynamic>>()
+    .map(Doctor.fromJson)
+    .toList();
   }
 
   // ============================================================

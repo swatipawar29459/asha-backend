@@ -752,6 +752,42 @@ def predict(user_id):
 
 
         # ----------------------------------------------------
+        # VALIDATE BASIC CYCLE DATA
+        # ----------------------------------------------------
+
+        if cycle_length is None or cycle_length <= 0:
+
+            return jsonify({
+
+                "status":
+                    "error",
+
+                "message":
+                    "Invalid cycle length.",
+
+                "error":
+                    "invalid_cycle_length"
+
+            }), 400
+
+
+        if period_length is None or period_length <= 0:
+
+            return jsonify({
+
+                "status":
+                    "error",
+
+                "message":
+                    "Invalid period length.",
+
+                "error":
+                    "invalid_period_length"
+
+            }), 400
+
+
+        # ----------------------------------------------------
         # VALIDATE MODEL
         # ----------------------------------------------------
 
@@ -866,12 +902,17 @@ def predict(user_id):
 
         # ----------------------------------------------------
         # ML PREDICTION
+        #
+        # This remains the actual ML output for the
+        # research/project comparison.
         # ----------------------------------------------------
 
         predicted_days = float(
+
             model.predict(
                 features
             )[0]
+
         )
 
         predicted_days = round(
@@ -887,34 +928,72 @@ def predict(user_id):
         )
 
 
+        print(
+            f"ML predicted cycle length: {predicted_days} days"
+        )
+
+
+        # ====================================================
+        # CALENDAR CALCULATIONS
+        #
+        # IMPORTANT:
+        # Calendar dates are based on the user's saved
+        # cycle length so that the Home Screen remains
+        # consistent with the user's actual cycle data.
+        #
+        # The ML prediction is still returned separately
+        # above as "prediction".
+        # ====================================================
+
+        calendar_cycle_length = cycle_length
+
+
         # ----------------------------------------------------
-        # DATE CALCULATIONS
+        # LAST PERIOD DATE
         # ----------------------------------------------------
 
         last_period = datetime.strptime(
 
-            last_period_date[:10],
+            str(
+                last_period_date
+            )[:10],
 
             "%Y-%m-%d"
 
         )
 
 
+        # ----------------------------------------------------
+        # NEXT PERIOD
+        # ----------------------------------------------------
+
         next_period = (
 
             last_period
+
             +
+
             timedelta(
-                days=predicted_days
+                days=calendar_cycle_length
             )
 
         )
 
 
+        # ----------------------------------------------------
+        # OVULATION
+        #
+        # Approximation:
+        # Ovulation is approximately 14 days before the
+        # next expected period.
+        # ----------------------------------------------------
+
         ovulation_date = (
 
             next_period
+
             -
+
             timedelta(
                 days=14
             )
@@ -922,10 +1001,19 @@ def predict(user_id):
         )
 
 
+        # ----------------------------------------------------
+        # FERTILE WINDOW
+        #
+        # Approximately 5 days before ovulation through
+        # ovulation day.
+        # ----------------------------------------------------
+
         fertile_start = (
 
             ovulation_date
+
             -
+
             timedelta(
                 days=5
             )
@@ -984,8 +1072,11 @@ def predict(user_id):
         current_day = (
 
             today
+
             -
+
             last_period.date()
+
         ).days + 1
 
 
@@ -996,12 +1087,18 @@ def predict(user_id):
 
         # ----------------------------------------------------
         # PHASE
+        #
+        # Phase is based on the user's saved cycle length,
+        # not the ML prediction, so the displayed phase
+        # matches the displayed calendar.
         # ----------------------------------------------------
 
         ovulation_day = (
 
-            predicted_days
+            calendar_cycle_length
+
             -
+
             14
 
         )
@@ -1027,6 +1124,98 @@ def predict(user_id):
 
 
         # ----------------------------------------------------
+        # CYCLE PROGRESS
+        #
+        # Flutter CircularProgressIndicator expects a
+        # value between 0.0 and 1.0.
+        # ----------------------------------------------------
+
+        cycle_progress = (
+
+            current_day
+
+            /
+
+            max(
+                calendar_cycle_length,
+                1
+            )
+
+        )
+
+        cycle_progress = max(
+
+            0.0,
+
+            min(
+                1.0,
+                cycle_progress
+            )
+
+        )
+
+
+        # ----------------------------------------------------
+        # LOG FINAL CALCULATION
+        # ----------------------------------------------------
+
+        print(
+            "=============================================="
+        )
+
+        print(
+            "ASHA CYCLE CALCULATION"
+        )
+
+        print(
+            f"User cycle length: {calendar_cycle_length}"
+        )
+
+        print(
+            f"ML predicted cycle length: {predicted_days}"
+        )
+
+        print(
+            f"Last period: {last_period.strftime('%Y-%m-%d')}"
+        )
+
+        print(
+            f"Next period: {next_period.strftime('%Y-%m-%d')}"
+        )
+
+        print(
+            f"Ovulation: {ovulation_date.strftime('%Y-%m-%d')}"
+        )
+
+        print(
+            f"Fertile window: "
+            f"{fertile_start.strftime('%Y-%m-%d')} "
+            f"to "
+            f"{fertile_end.strftime('%Y-%m-%d')}"
+        )
+
+        print(
+            f"Current cycle day: {current_day}"
+        )
+
+        print(
+            f"Phase: {phase}"
+        )
+
+        print(
+            f"Confidence: {confidence}%"
+        )
+
+        print(
+            f"Cycle progress: {cycle_progress}"
+        )
+
+        print(
+            "=============================================="
+        )
+
+
+        # ----------------------------------------------------
         # RESPONSE
         # ----------------------------------------------------
 
@@ -1035,11 +1224,25 @@ def predict(user_id):
             "status":
                 "success",
 
+            # ------------------------------------------------
+            # ML RESULT
+            # ------------------------------------------------
+
             "prediction":
                 predicted_days,
 
+            # Keep this field aligned with the calendar
+            # shown in the Home Screen.
             "predicted_cycle_length":
+                calendar_cycle_length,
+
+            # Optional explicit ML field for research/demo.
+            "ml_predicted_cycle_length":
                 predicted_days,
+
+            # ------------------------------------------------
+            # CALENDAR RESULT
+            # ------------------------------------------------
 
             "next_period":
                 next_period.strftime(
@@ -1085,11 +1288,19 @@ def predict(user_id):
                 f"{fertile_start.strftime('%d %b')} - "
                 f"{fertile_end.strftime('%d %b')}",
 
+            # ------------------------------------------------
+            # AI CONFIDENCE
+            # ------------------------------------------------
+
             "confidence":
                 confidence,
 
             "ai_confidence":
                 confidence,
+
+            # ------------------------------------------------
+            # CURRENT CYCLE
+            # ------------------------------------------------
 
             "current_day":
                 current_day,
@@ -1101,22 +1312,11 @@ def predict(user_id):
                 phase,
 
             "cycle_progress":
-                round(
+                cycle_progress,
 
-                    (
-                        current_day
-                        /
-                        max(
-                            predicted_days,
-                            1
-                        )
-                    )
-                    *
-                    100,
-
-                    1
-
-                ),
+            # ------------------------------------------------
+            # MODEL INFORMATION
+            # ------------------------------------------------
 
             "factor_weights":
                 get_model_feature_importance(),
@@ -1124,9 +1324,16 @@ def predict(user_id):
             "pcos_risk":
 
                 "Higher"
+
                 if pcos == 1
+
                 else
+
                 "Normal",
+
+            # ------------------------------------------------
+            # USER PROFILE VALUES
+            # ------------------------------------------------
 
             "avg_cycle_length":
                 cycle_length,
@@ -1205,12 +1412,6 @@ def find_doctors():
 
         # ----------------------------------------------------
         # READ LOCATION DATA
-        #
-        # GET:
-        # /find-doctors?lat=19.07&lng=72.87&radius=5000
-        #
-        # POST:
-        # {"latitude": ..., "longitude": ..., "radius": ...}
         # ----------------------------------------------------
 
         if request.method == "GET":
