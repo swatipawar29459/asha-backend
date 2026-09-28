@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/doctor.dart';
 import '../models/prediction.dart';
@@ -110,34 +111,26 @@ class ApiService {
   // ============================================================
 
   static Future<void> logSymptoms(
-    String userId,
-    Map<String, dynamic> symptoms,
-  ) async {
-    if (userId.isEmpty) {
-      throw Exception('User ID not found.');
-    }
-
-    final Uri url =
-        Uri.parse('$baseUrl/log/$userId');
-
-    final http.Response response =
-        await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(symptoms),
-    );
-
-    if (response.statusCode < 200 ||
-        response.statusCode >= 300) {
-      throw Exception(
-        'Failed to save symptoms: '
-        '${response.statusCode}\n${response.body}',
-      );
-    }
+  String userId,
+  Map<String, dynamic> symptoms,
+) async {
+  if (userId.isEmpty) {
+    throw Exception('User ID not found.');
   }
 
+  try {
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('health_logs')
+        .add({
+      ...symptoms,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    throw Exception('Failed to save health log: $e');
+  }
+}
   // ============================================================
   // CHAT
   // ============================================================

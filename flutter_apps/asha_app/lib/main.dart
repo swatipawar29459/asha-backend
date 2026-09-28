@@ -34,6 +34,7 @@ import 'screens/update_last_period_screen.dart';
 
 import 'screens/bmi_screen.dart';
 import 'screens/exercise_screen.dart';
+import 'screens/health_history_screen.dart';
 
 
 void main() async {
@@ -206,6 +207,8 @@ class AshaApp
         '/update-last-period':
             (_) =>
                 const UpdateLastPeriodScreen(),
+
+        '/health-history': (context) => const HealthHistoryScreen(),
       },
     );
   }

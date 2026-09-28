@@ -1,3 +1,4 @@
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -178,7 +179,6 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(
                 child: _buildHeader(),
               ),
-
               SliverToBoxAdapter(
                 child: _buildMainContent(),
               ),
@@ -216,9 +216,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     fontWeight: FontWeight.w400,
                   ),
                 ),
-
                 const SizedBox(height: 1),
-
                 Text(
                   '${_getUserName()} 🌼',
                   style: const TextStyle(
@@ -230,7 +228,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-
           _buildNotificationButton(),
         ],
       ),
@@ -366,9 +363,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Icons.info_outline_rounded,
               color: AshaColors.coral,
             ),
-
             const SizedBox(width: 12),
-
             Expanded(
               child: Text(
                 _errorMessage,
@@ -378,7 +373,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-
             TextButton(
               onPressed: () => _loadHomeData(),
               child: const Text('Retry'),
@@ -482,7 +476,6 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-
             // ==================================================
             // OUTER CIRCLE
             // ==================================================
@@ -508,7 +501,6 @@ class _HomeScreenState extends State<HomeScreen> {
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-
                 // DAY — SAME LINE
                 Row(
                   mainAxisSize: MainAxisSize.min,
@@ -524,7 +516,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-
                     Text(
                       '${prediction.currentDay}',
                       style: const TextStyle(
@@ -598,7 +589,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-
         // ======================================================
         // NEXT PERIOD
         // ======================================================
@@ -657,7 +647,6 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-
           Row(
             children: [
               Icon(
@@ -665,9 +654,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: iconColor,
                 size: 14,
               ),
-
               const SizedBox(width: 4),
-
               Expanded(
                 child: Text(
                   label,
@@ -711,7 +698,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildActionButtons() {
     return Column(
       children: [
-
         // ======================================================
         // LOG DISCHARGE
         // ======================================================
@@ -725,13 +711,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 const DischargeTrackerScreen(),
               );
             },
-
             icon: const Icon(
               Icons.water_drop_outlined,
               color: AshaColors.ink,
               size: 16,
             ),
-
             label: const Text(
               'Log discharge',
               style: TextStyle(
@@ -740,7 +724,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 fontSize: 12,
               ),
             ),
-
             style: ElevatedButton.styleFrom(
               backgroundColor:
                   const Color(0xFFF3D9A0),
@@ -769,13 +752,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 const FindDoctorScreen(),
               );
             },
-
             icon: const Icon(
               Icons.search_rounded,
               color: AshaColors.slate,
               size: 16,
             ),
-
             label: const Text(
               'Find a doctor nearby',
               style: TextStyle(
@@ -784,7 +765,49 @@ class _HomeScreenState extends State<HomeScreen> {
                 fontSize: 12,
               ),
             ),
+            style: OutlinedButton.styleFrom(
+              backgroundColor: Colors.white,
+              side: const BorderSide(
+                color: AshaColors.peachDark,
+              ),
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(24),
+              ),
+            ),
+          ),
+        ),
 
+        const SizedBox(height: 10),
+
+        // ======================================================
+        // HEALTH HISTORY
+        // ======================================================
+
+        SizedBox(
+          width: double.infinity,
+          height: 44,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pushNamed(
+                context,
+                '/health-history',
+              );
+            },
+            icon: const Icon(
+              Icons.history_rounded,
+              color: AshaColors.slate,
+              size: 16,
+            ),
+            label: const Text(
+              'Health History',
+              style: TextStyle(
+                color: AshaColors.slate,
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
             style: OutlinedButton.styleFrom(
               backgroundColor: Colors.white,
               side: const BorderSide(
@@ -802,3 +825,4 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+
